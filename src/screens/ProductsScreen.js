@@ -1,0 +1,394 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Card, Searchbar, Chip } from 'react-native-paper';
+import { Colors, Spacing, Typography } from '../constants/colors';
+import { ROUTES } from '../navigation/navigationConstants';
+
+export default function ProductsScreen({ route, navigation }) {
+  const { category, searchQuery: initialSearchQuery, title } = route.params || {};
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
+  const [selectedFilter, setSelectedFilter] = useState('all');
+
+  const products = [
+    {
+      id: 1,
+      name: 'Nike Air Max 270',
+      brand: 'Nike',
+      price: 2500000,
+      originalPrice: 3000000,
+      discount: 17,
+      image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=300&q=80',
+      rating: 4.8,
+      reviews: 128,
+      category: 'Sneakers',
+      isNew: true,
+      isHot: false,
+    },
+    {
+      id: 2,
+      name: 'Adidas Ultraboost 22',
+      brand: 'Adidas',
+      price: 3200000,
+      originalPrice: 3500000,
+      discount: 9,
+      image: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?auto=format&fit=crop&w=300&q=80',
+      rating: 4.9,
+      reviews: 95,
+      category: 'Running',
+      isNew: false,
+      isHot: true,
+    },
+    {
+      id: 3,
+      name: 'Converse Chuck Taylor',
+      brand: 'Converse',
+      price: 1200000,
+      originalPrice: 1200000,
+      discount: 0,
+      image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=300&q=80',
+      rating: 4.7,
+      reviews: 203,
+      category: 'Lifestyle',
+      isNew: false,
+      isHot: false,
+    },
+    {
+      id: 4,
+      name: 'Vans Old Skool',
+      price: 1800000,
+      originalPrice: 2000000,
+      image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=300&q=80',
+      rating: 4.6,
+      reviews: 87,
+      category: 'Sneakers',
+    },
+  ];
+
+  const filters = [
+    { key: 'all', label: 'All' },
+    { key: 'price-low', label: 'Price: Low to High' },
+    { key: 'price-high', label: 'Price: High to Low' },
+    { key: 'rating', label: 'Rating' },
+  ];
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(price);
+  };
+
+  const renderProduct = ({ item }) => (
+    <TouchableOpacity
+      style={styles.productCard}
+      onPress={() => navigation.navigate(ROUTES.PRODUCT_DETAIL, { product: item })}
+    >
+      <View style={styles.productImageContainer}>
+        <Image source={{ uri: item.image }} style={styles.productImage} />
+        {/* Badges */}
+        <View style={styles.badgeContainer}>
+          {item.isNew && (
+            <View style={[styles.badge, styles.newBadge]}>
+              <Text style={styles.badgeText}>NEW</Text>
+            </View>
+          )}
+          {item.isHot && (
+            <View style={[styles.badge, styles.hotBadge]}>
+              <Text style={styles.badgeText}>HOT</Text>
+            </View>
+          )}
+          {item.discount > 0 && (
+            <View style={[styles.badge, styles.discountBadge]}>
+              <Text style={styles.badgeText}>-{item.discount}%</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      <View style={styles.productInfo}>
+        <Text style={styles.productBrand}>{item.brand}</Text>
+        <Text style={styles.productName} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <View style={styles.priceContainer}>
+          <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
+          {item.originalPrice > item.price && (
+            <Text style={styles.originalPrice}>
+              {formatPrice(item.originalPrice)}
+            </Text>
+          )}
+        </View>
+        <View style={styles.ratingContainer}>
+          <View style={styles.starsContainer}>
+            <Text style={styles.stars}>⭐⭐⭐⭐⭐</Text>
+            <Text style={styles.rating}>{item.rating}</Text>
+          </View>
+          <Text style={styles.reviews}>({item.reviews} reviews)</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backText}>← {title || category?.name || 'Products'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Searchbar
+          placeholder="Search products..."
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={styles.searchBar}
+        />
+      </View>
+
+      {/* Filters */}
+      <View style={styles.filtersContainer}>
+        <FlatList
+          data={filters}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <Chip
+              selected={selectedFilter === item.key}
+              onPress={() => setSelectedFilter(item.key)}
+              style={[
+                styles.filterChip,
+                selectedFilter === item.key && styles.selectedFilterChip,
+              ]}
+              textStyle={[
+                styles.filterText,
+                selectedFilter === item.key && styles.selectedFilterText,
+              ]}
+            >
+              {item.label}
+            </Chip>
+          )}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.filtersList}
+        />
+      </View>
+
+      {/* Products List */}
+      <FlatList
+        data={products}
+        renderItem={renderProduct}
+        keyExtractor={(item) => item.id.toString()}
+        numColumns={2}
+        contentContainerStyle={styles.productsList}
+        showsVerticalScrollIndicator={false}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  header: {
+    padding: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    elevation: 8,
+    shadowColor: Colors.shadowDark,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    elevation: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  backText: {
+    ...Typography.body,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  searchContainer: {
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+  },
+  searchBar: {
+    elevation: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    borderRadius: 25,
+    backgroundColor: Colors.white,
+  },
+  filtersContainer: {
+    backgroundColor: Colors.white,
+    paddingVertical: Spacing.md,
+    elevation: 2,
+    shadowColor: Colors.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  filtersList: {
+    paddingHorizontal: Spacing.md,
+  },
+  filterChip: {
+    marginRight: Spacing.sm,
+    backgroundColor: Colors.lightGray,
+    borderRadius: 20,
+  },
+  selectedFilterChip: {
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+  },
+  filterText: {
+    color: Colors.textPrimary,
+    fontWeight: '500',
+  },
+  selectedFilterText: {
+    color: Colors.white,
+    fontWeight: '600',
+  },
+  productsList: {
+    padding: Spacing.md,
+  },
+  productCard: {
+    flex: 1,
+    margin: Spacing.xs,
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    elevation: 8,
+    shadowColor: Colors.shadowDark,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  productImageContainer: {
+    position: 'relative',
+  },
+  productImage: {
+    width: '100%',
+    height: 140,
+    resizeMode: 'cover',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: Spacing.sm,
+    left: Spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  badge: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginRight: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  newBadge: {
+    backgroundColor: Colors.success,
+  },
+  hotBadge: {
+    backgroundColor: Colors.error,
+  },
+  discountBadge: {
+    backgroundColor: Colors.warning,
+  },
+  badgeText: {
+    ...Typography.small,
+    color: Colors.white,
+    fontWeight: 'bold',
+    fontSize: 10,
+  },
+  productInfo: {
+    padding: Spacing.md,
+  },
+  productBrand: {
+    ...Typography.small,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  productName: {
+    ...Typography.caption,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
+    lineHeight: 18,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  productPrice: {
+    ...Typography.price,
+    marginRight: Spacing.xs,
+  },
+  originalPrice: {
+    ...Typography.small,
+    color: Colors.textSecondary,
+    textDecorationLine: 'line-through',
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stars: {
+    fontSize: 12,
+    marginRight: Spacing.xs,
+  },
+  rating: {
+    ...Typography.small,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  reviews: {
+    ...Typography.small,
+    color: Colors.textSecondary,
+  },
+});

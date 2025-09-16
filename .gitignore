@@ -9,6 +9,8 @@ dist/
 web-build/
 expo-env.d.ts
 
+.vscode/
+
 # Native
 .kotlin/
 *.orig.*
@@ -35,3 +37,50 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# --- Additional ignores ---
+# Expo / React Native caches
+.expo-shared/
+.expo-dev/
+.expo-packager-cache/
+metro-cache/
+.cache/
+
+# Editor
+.vscode/
+.idea/
+
+# Builds / bundles / temp
+build/
+tmp/
+temp/
+.tmp/
+coverage/
+
+# Environment files (keep example if present)
+.env
+.env.*
+!.env.example
+
+# iOS / Android (if ejected)
+android/
+ios/
+Pods/
+*.xcworkspace
+DerivedData/
+.gradle/
+local.properties
+*.iml
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Logs
+*.log
+*.log.*
+
+# Watchman
+.watchmanconfig
