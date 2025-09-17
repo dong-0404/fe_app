@@ -13,7 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card } from 'react-native-paper';
+import { Card } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -21,12 +21,18 @@ import { useAuth } from '../context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
-export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function RegisterScreen({ navigation }) {
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    full_name: '',
+    phone: '',
+  });
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
-  const { login, isLoading, error, clearError } = useAuth();
+  const { register, isLoading, error, clearError } = useAuth();
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -53,26 +59,63 @@ export default function LoginScreen({ navigation }) {
     ]).start();
   }, []);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const validateForm = () => {
+    const { email, password, confirmPassword, full_name } = formData;
+
+    if (!email || !password || !confirmPassword || !full_name) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return false;
     }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return false;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleRegister = async () => {
+    if (!validateForm()) return;
 
     // Clear any previous errors
     clearError();
 
     try {
-      await login(email, password);
-      // Navigation will be handled by the auth context
-      navigation.replace(ROUTES.MAIN_APP);
+      const { confirmPassword, ...registerData } = formData;
+      await register(registerData);
+      
+      Alert.alert(
+        'Registration Successful',
+        'Your account has been created successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.replace(ROUTES.MAIN_APP),
+          },
+        ]
+      );
     } catch (error) {
-      Alert.alert('Login Failed', error.message || 'An error occurred during login');
+      Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
     }
-  };
-
-  const handleForgotPassword = () => {
-    Alert.alert('Forgot Password', 'Password reset link sent to your email');
   };
 
   return (
@@ -126,8 +169,8 @@ export default function LoginScreen({ navigation }) {
                 <Text style={styles.logo}>👟</Text>
                 <View style={styles.logoGlow} />
               </View>
-              <Text style={styles.appName}>Welcome Back</Text>
-              <Text style={styles.subtitle}>Sign in to continue shopping</Text>
+              <Text style={styles.appName}>Create Account</Text>
+              <Text style={styles.subtitle}>Join us and start shopping</Text>
             </Animated.View>
 
             <Animated.View
@@ -139,17 +182,32 @@ export default function LoginScreen({ navigation }) {
                 },
               ]}
             >
-              <Card style={styles.loginCard}>
+              <Card style={styles.registerCard}>
                 <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Email Address</Text>
+                  <Text style={styles.label}>Full Name *</Text>
+                  <View style={styles.inputWrapper}>
+                    <Text style={styles.inputIcon}>👤</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your full name"
+                      placeholderTextColor={Colors.textLight}
+                      value={formData.full_name}
+                      onChangeText={(value) => handleInputChange('full_name', value)}
+                      autoCapitalize="words"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Email Address *</Text>
                   <View style={styles.inputWrapper}>
                     <Text style={styles.inputIcon}>📧</Text>
                     <TextInput
                       style={styles.input}
                       placeholder="Enter your email"
                       placeholderTextColor={Colors.textLight}
-                      value={email}
-                      onChangeText={setEmail}
+                      value={formData.email}
+                      onChangeText={(value) => handleInputChange('email', value)}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -158,15 +216,30 @@ export default function LoginScreen({ navigation }) {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Password</Text>
+                  <Text style={styles.label}>Phone Number</Text>
+                  <View style={styles.inputWrapper}>
+                    <Text style={styles.inputIcon}>📱</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your phone number"
+                      placeholderTextColor={Colors.textLight}
+                      value={formData.phone}
+                      onChangeText={(value) => handleInputChange('phone', value)}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Password *</Text>
                   <View style={styles.inputWrapper}>
                     <Text style={styles.inputIcon}>🔒</Text>
                     <TextInput
                       style={styles.input}
                       placeholder="Enter your password"
                       placeholderTextColor={Colors.textLight}
-                      value={password}
-                      onChangeText={setPassword}
+                      value={formData.password}
+                      onChangeText={(value) => handleInputChange('password', value)}
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
                     />
@@ -179,32 +252,47 @@ export default function LoginScreen({ navigation }) {
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.forgotPassword}
-                  onPress={handleForgotPassword}
-                >
-                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                </TouchableOpacity>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Confirm Password *</Text>
+                  <View style={styles.inputWrapper}>
+                    <Text style={styles.inputIcon}>🔒</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm your password"
+                      placeholderTextColor={Colors.textLight}
+                      value={formData.confirmPassword}
+                      onChangeText={(value) => handleInputChange('confirmPassword', value)}
+                      secureTextEntry={!showConfirmPassword}
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeButton}
+                      onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      <Text style={styles.eyeIcon}>{showConfirmPassword ? '👁️' : '👁️‍🗨️'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
                 {isLoading ? (
                   <View style={styles.loadingContainer}>
-                    <LoadingSpinner size="small" color={Colors.primary} text="Signing in..." />
+                    <LoadingSpinner size="small" color={Colors.primary} text="Creating account..." />
                   </View>
                 ) : (
                   <TouchableOpacity
-                    style={styles.loginButton}
-                    onPress={handleLogin}
+                    style={styles.registerButton}
+                    onPress={handleRegister}
                     disabled={isLoading}
                   >
-                    <Text style={styles.loginButtonText}>Sign In</Text>
+                    <Text style={styles.registerButtonText}>Create Account</Text>
                   </TouchableOpacity>
                 )}
               </Card>
 
-              <View style={styles.registerContainer}>
-                <Text style={styles.registerText}>Don't have an account?</Text>
-                <TouchableOpacity onPress={() => navigation.navigate(ROUTES.REGISTER)}>
-                  <Text style={styles.registerLink}>Create Account</Text>
+              <View style={styles.loginContainer}>
+                <Text style={styles.loginText}>Already have an account?</Text>
+                <TouchableOpacity onPress={() => navigation.navigate(ROUTES.LOGIN)}>
+                  <Text style={styles.loginLink}>Sign In</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -297,7 +385,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   logoWrapper: {
     position: 'relative',
@@ -323,7 +411,7 @@ const styles = StyleSheet.create({
   appName: {
     ...Typography.h1,
     color: Colors.white,
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     marginBottom: Spacing.xs,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
@@ -340,7 +428,7 @@ const styles = StyleSheet.create({
   formContainer: {
     flex: 1,
   },
-  loginCard: {
+  registerCard: {
     padding: Spacing.xl,
     borderRadius: 25,
     elevation: 12,
@@ -355,7 +443,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   inputContainer: {
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   label: {
     ...Typography.caption,
@@ -390,20 +478,11 @@ const styles = StyleSheet.create({
   eyeIcon: {
     fontSize: 18,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: Spacing.lg,
-  },
-  forgotPasswordText: {
-    ...Typography.caption,
-    color: Colors.primary,
-    fontWeight: '600',
-  },
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: Spacing.md,
   },
-  loginButton: {
+  registerButton: {
     backgroundColor: Colors.primary,
     borderRadius: 25,
     paddingVertical: Spacing.md,
@@ -416,28 +495,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
-  loginButtonText: {
+  registerButtonText: {
     ...Typography.button,
     textAlign: 'center',
     fontSize: 18,
     fontWeight: '700',
   },
-  registerContainer: {
+  loginContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: Spacing.lg,
   },
-  registerText: {
+  loginText: {
     ...Typography.body,
     color: Colors.white,
     marginRight: Spacing.xs,
     opacity: 0.9,
   },
-  registerLink: {
+  loginLink: {
     ...Typography.body,
     color: Colors.white,
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
 });
+

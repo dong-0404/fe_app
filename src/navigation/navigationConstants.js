@@ -3,6 +3,7 @@ export const ROUTES = {
   // Auth Stack
   SPLASH: 'Splash',
   LOGIN: 'Login',
+  REGISTER: 'Register',
   
   // Main App Stack
   MAIN_APP: 'MainApp',

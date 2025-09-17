@@ -7,6 +7,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 // Import screens
 import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import ProductsScreen from '../screens/ProductsScreen';
@@ -134,6 +135,10 @@ export default function AppNavigator() {
         <Stack.Screen 
           name={ROUTES.LOGIN} 
           component={LoginScreen}
+        />
+        <Stack.Screen 
+          name={ROUTES.REGISTER} 
+          component={RegisterScreen}
         />
         <Stack.Screen 
           name={ROUTES.MAIN_APP} 
