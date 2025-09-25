@@ -1,109 +1,65 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 
 // Base API configuration
-// Use actual IP instead of localhost for React Native
-const API_BASE_URL = 'https://91a33718ec19.ngrok-free.app/api';
+const API_BASE_URL = 'https://shin-app.up.railway.app/api';
 
-class ApiService {
-  constructor() {
-    this.baseURL = API_BASE_URL;
-    this.token = null;
-  }
+let authToken = null;
 
-  // Set authentication token
-  async setToken(token) {
-    this.token = token;
-    if (token) {
-      await AsyncStorage.setItem('auth_token', token);
-    } else {
-      await AsyncStorage.removeItem('auth_token');
-    }
-  }
-
-  // Get stored token
-  async getStoredToken() {
-    try {
-      const token = await AsyncStorage.getItem('auth_token');
-      this.token = token;
-      return token;
-    } catch (error) {
-      console.error('Error getting stored token:', error);
-      return null;
-    }
-  }
-
-  // Clear stored token
-  async clearToken() {
-    this.token = null;
+export async function setToken(token) {
+  authToken = token;
+  if (token) {
+    await AsyncStorage.setItem('auth_token', token);
+  } else {
     await AsyncStorage.removeItem('auth_token');
-  }
-
-  // Get headers with authentication
-  getHeaders() {
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
-
-    return headers;
-  }
-
-  // Generic API request method
-  async request(endpoint, options = {}) {
-    const url = `${this.baseURL}${endpoint}`;
-    const config = {
-      headers: this.getHeaders(),
-      ...options,
-    };
-
-    try {
-      console.log(url);
-      const response = await fetch(url, config);
-      const data = await response.json();
-      console.log(data);
-
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
-      }
-
-      return data;
-    } catch (error) {
-      console.error(`API request failed for ${endpoint}:`, error);
-      throw error;
-    }
-  }
-
-  // GET request
-  async get(endpoint) {
-    return this.request(endpoint, { method: 'GET' });
-  }
-
-  // POST request
-  async post(endpoint, data) {
-    return this.request(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // PUT request
-  async put(endpoint, data) {
-    return this.request(endpoint, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // DELETE request
-  async delete(endpoint) {
-    return this.request(endpoint, { method: 'DELETE' });
   }
 }
 
-// Create singleton instance
-const apiService = new ApiService();
+export async function getStoredToken() {
+  try {
+    const token = await AsyncStorage.getItem('auth_token');
+    authToken = token;
+    return token;
+  } catch (_e) {
+    return null;
+  }
+}
 
-export default apiService;
+export async function clearToken() {
+  authToken = null;
+  await AsyncStorage.removeItem('auth_token');
+}
+
+export const axiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 20000,
+});
+
+axiosInstance.interceptors.request.use(
+  async (config) => {
+    if (!authToken) {
+      const stored = await AsyncStorage.getItem('auth_token');
+      authToken = stored;
+    }
+    if (authToken) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${authToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  (error) => Promise.reject(error)
+);
+
+// Optional default export for convenience
+export default {
+  axiosInstance,
+  setToken,
+  getStoredToken,
+  clearToken,
+};

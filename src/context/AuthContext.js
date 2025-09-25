@@ -106,28 +106,26 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = async () => {
     try {
       dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
-      
       const isAuth = await authService.isAuthenticated();
       if (isAuth) {
         const profileResponse = await authService.getProfile();
+        console.log('profileResponse', profileResponse.data.user);
         dispatch({
           type: AUTH_ACTIONS.SET_USER,
           payload: profileResponse.data.user,
         });
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      // silent fail
     } finally {
       dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
     }
   };
 
   const login = async (email, password) => {
-    try {
-      dispatch({ type: AUTH_ACTIONS.LOGIN_START });
-      
-      const response = await authService.login(email, password);
-      
+    dispatch({ type: AUTH_ACTIONS.LOGIN_START });
+    const response = await authService.login(email, password);
+    if (response.success !== false) {
       dispatch({
         type: AUTH_ACTIONS.LOGIN_SUCCESS,
         payload: {
@@ -135,23 +133,20 @@ export const AuthProvider = ({ children }) => {
           token: response.data.token,
         },
       });
-      
       return response;
-    } catch (error) {
+    } else {
       dispatch({
         type: AUTH_ACTIONS.LOGIN_FAILURE,
-        payload: error.message,
+        payload: response.message,
       });
-      throw error;
+      return response;
     }
   };
 
   const register = async (userData) => {
-    try {
-      dispatch({ type: AUTH_ACTIONS.REGISTER_START });
-      
-      const response = await authService.register(userData);
-      
+    dispatch({ type: AUTH_ACTIONS.REGISTER_START });
+    const response = await authService.register(userData);
+    if (response.success !== false) {
       dispatch({
         type: AUTH_ACTIONS.REGISTER_SUCCESS,
         payload: {
@@ -159,14 +154,13 @@ export const AuthProvider = ({ children }) => {
           token: response.data.token,
         },
       });
-      
       return response;
-    } catch (error) {
+    } else {
       dispatch({
         type: AUTH_ACTIONS.REGISTER_FAILURE,
-        payload: error.message,
+        payload: response.message,
       });
-      throw error;
+      return response;
     }
   };
 
@@ -175,7 +169,6 @@ export const AuthProvider = ({ children }) => {
       await authService.logout();
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     } catch (error) {
-      // Even if logout API fails, clear local state
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
       throw error;
     }
@@ -184,12 +177,10 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (profileData) => {
     try {
       const response = await authService.updateProfile(profileData);
-      
       dispatch({
         type: AUTH_ACTIONS.SET_USER,
         payload: response.data.user,
       });
-      
       return response;
     } catch (error) {
       throw error;

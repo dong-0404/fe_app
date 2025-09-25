@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   Animated,
   Dimensions,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
+import { Snackbar } from 'react-native-paper';
 
 const { width, height } = Dimensions.get('window');
 
@@ -31,8 +31,10 @@ export default function RegisterScreen({ navigation }) {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   
-  const { register, isLoading, error, clearError } = useAuth();
+  const { register, isLoading, clearError } = useAuth();
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -59,6 +61,11 @@ export default function RegisterScreen({ navigation }) {
     ]).start();
   }, []);
 
+  const showError = (message) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  };
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -70,23 +77,23 @@ export default function RegisterScreen({ navigation }) {
     const { email, password, confirmPassword, full_name } = formData;
 
     if (!email || !password || !confirmPassword || !full_name) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showError('Please fill in all required fields');
       return false;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      showError('Passwords do not match');
       return false;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+      showError('Password must be at least 6 characters long');
       return false;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      showError('Please enter a valid email address');
       return false;
     }
 
@@ -96,25 +103,22 @@ export default function RegisterScreen({ navigation }) {
   const handleRegister = async () => {
     if (!validateForm()) return;
 
-    // Clear any previous errors
     clearError();
 
-    try {
-      const { confirmPassword, ...registerData } = formData;
-      await register(registerData);
-      
-      Alert.alert(
-        'Registration Successful',
-        'Your account has been created successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.replace(ROUTES.MAIN_APP),
-          },
-        ]
-      );
-    } catch (error) {
-      Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
+    const { confirmPassword, ...registerData } = formData;
+    const result = await register(registerData);
+    
+    if (result.success !== false) {
+      navigation.replace(ROUTES.MAIN_APP);
+    } else {
+      let errorMessage = result.message || 'Registration failed';
+      if (result.error && result.error.errors) {
+        const validationErrors = result.error.errors.map(err => 
+          `• ${err.path || err.field}: ${err.msg || err.message}`
+        ).join('\n');
+        errorMessage = `Please fix the following issues:\n${validationErrors}`;
+      }
+      showError(errorMessage);
     }
   };
 
@@ -298,6 +302,19 @@ export default function RegisterScreen({ navigation }) {
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <Snackbar
+          visible={snackbarVisible}
+          onDismiss={() => setSnackbarVisible(false)}
+          duration={4000}
+          style={{ backgroundColor: '#323232' }}
+          action={{
+            label: 'OK',
+            onPress: () => setSnackbarVisible(false),
+          }}
+        >
+          {snackbarMessage}
+        </Snackbar>
       </View>
     </SafeAreaView>
   );

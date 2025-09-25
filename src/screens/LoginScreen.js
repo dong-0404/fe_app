@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   Animated,
   Dimensions,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuth } from '../context/AuthContext';
+import { Snackbar } from 'react-native-paper';
 
 const { width, height } = Dimensions.get('window');
 
@@ -25,8 +25,10 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   
-  const { login, isLoading, error, clearError } = useAuth();
+  const { login, isLoading, clearError } = useAuth();
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -53,26 +55,32 @@ export default function LoginScreen({ navigation }) {
     ]).start();
   }, []);
 
+  const showError = (message) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      showError('Please fill in all fields');
       return;
     }
 
-    // Clear any previous errors
     clearError();
 
-    try {
-      await login(email, password);
-      // Navigation will be handled by the auth context
+    const result = await login(email, password);
+    
+    if (result.success !== false) {
       navigation.replace(ROUTES.MAIN_APP);
-    } catch (error) {
-      Alert.alert('Login Failed', error.message || 'An error occurred during login');
+    } else {
+      console.log(result);
+      let errorMessage = result.message || 'Login failed';
+      showError(errorMessage);
     }
   };
 
   const handleForgotPassword = () => {
-    Alert.alert('Forgot Password', 'Password reset link sent to your email');
+    showError('Password reset link sent to your email');
   };
 
   return (
@@ -210,6 +218,19 @@ export default function LoginScreen({ navigation }) {
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <Snackbar
+          visible={snackbarVisible}
+          onDismiss={() => setSnackbarVisible(false)}
+          duration={4000}
+          style={{ backgroundColor: '#323232' }}
+          action={{
+            label: 'OK',
+            onPress: () => setSnackbarVisible(false),
+          }}
+        >
+          {snackbarMessage}
+        </Snackbar>
       </View>
     </SafeAreaView>
   );

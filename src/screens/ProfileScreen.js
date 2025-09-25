@@ -11,15 +11,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Button, Avatar } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
+import { useAuth } from '../context/AuthContext';
 
 export default function ProfileScreen({ navigation }) {
-  const user = {
-    name: 'John Doe',
-    email: 'john@example.com',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
-    memberSince: '2023',
-    totalOrders: 12,
-    loyaltyPoints: 1250,
+  const { user, logout, isAuthenticated } = useAuth();
+
+  const profileUser = {
+    name: user?.full_name || user?.name || 'Guest',
+    email: user?.email || '',
+    avatar:
+      user?.avatar_url ||
+      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
+    memberSince: user?.createdAt ? new Date(user.createdAt).getFullYear().toString() : '—',
+    totalOrders: user?.totalOrders ?? 0,
+    loyaltyPoints: user?.loyaltyPoints ?? 0,
+    membershipLevel: user?.membershipLevel ?? 'Bronze',
   };
 
   const menuItems = [
@@ -33,6 +39,9 @@ export default function ProfileScreen({ navigation }) {
   ];
 
   const handleLogout = () => {
+    if (!isAuthenticated) {
+      return navigation.replace(ROUTES.LOGIN);
+    }
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
@@ -41,7 +50,14 @@ export default function ProfileScreen({ navigation }) {
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => navigation.replace(ROUTES.LOGIN),
+          onPress: async () => {
+            try {
+              await logout();
+              navigation.replace(ROUTES.LOGIN);
+            } catch (_) {
+              navigation.replace(ROUTES.LOGIN);
+            }
+          },
         },
       ]
     );
@@ -80,21 +96,21 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.avatarContainer}>
               <Avatar.Image
                 size={90}
-                source={{ uri: user.avatar }}
+                source={{ uri: profileUser.avatar }}
                 style={styles.avatar}
               />
               <View style={styles.onlineIndicator} />
             </View>
             <View style={styles.userDetails}>
-              <Text style={styles.userName}>{user.name}</Text>
-              <Text style={styles.userEmail}>{user.email}</Text>
-              <Text style={styles.memberSince}>Member since {user.memberSince}</Text>
+              <Text style={styles.userName}>{profileUser.name}</Text>
+              <Text style={styles.userEmail}>{profileUser.email}</Text>
+              <Text style={styles.memberSince}>Member since {profileUser.memberSince}</Text>
             </View>
           </View>
           <Button
             mode="contained"
             style={styles.editButton}
-            onPress={() => Alert.alert('Coming Soon', 'Edit Profile feature will be available soon')}
+            onPress={() => navigation.navigate(ROUTES.SETTINGS)}
           >
             Edit Profile
           </Button>
@@ -104,17 +120,17 @@ export default function ProfileScreen({ navigation }) {
         <Card style={styles.statsCard}>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{user.totalOrders}</Text>
+              <Text style={styles.statNumber}>{profileUser.totalOrders}</Text>
               <Text style={styles.statLabel}>Orders</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{user.loyaltyPoints}</Text>
+              <Text style={styles.statNumber}>{profileUser.loyaltyPoints}</Text>
               <Text style={styles.statLabel}>Points</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>Gold</Text>
+              <Text style={styles.statNumber}>{profileUser.membershipLevel}</Text>
               <Text style={styles.statLabel}>Member</Text>
             </View>
           </View>

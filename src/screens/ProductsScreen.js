@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,71 +6,129 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Searchbar, Chip } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
+import productService from '../services/productService';
 
 export default function ProductsScreen({ route, navigation }) {
   const { category, searchQuery: initialSearchQuery, title } = route.params || {};
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [pagination, setPagination] = useState({});
+  const [page, setPage] = useState(1);
 
-  const products = [
-    {
-      id: 1,
-      name: 'Nike Air Max 270',
-      brand: 'Nike',
-      price: 2500000,
-      originalPrice: 3000000,
-      discount: 17,
-      image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=300&q=80',
-      rating: 4.8,
-      reviews: 128,
-      category: 'Sneakers',
-      isNew: true,
-      isHot: false,
-    },
-    {
-      id: 2,
-      name: 'Adidas Ultraboost 22',
-      brand: 'Adidas',
-      price: 3200000,
-      originalPrice: 3500000,
-      discount: 9,
-      image: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?auto=format&fit=crop&w=300&q=80',
-      rating: 4.9,
-      reviews: 95,
-      category: 'Running',
-      isNew: false,
-      isHot: true,
-    },
-    {
-      id: 3,
-      name: 'Converse Chuck Taylor',
-      brand: 'Converse',
-      price: 1200000,
-      originalPrice: 1200000,
-      discount: 0,
-      image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=300&q=80',
-      rating: 4.7,
-      reviews: 203,
-      category: 'Lifestyle',
-      isNew: false,
-      isHot: false,
-    },
-    {
-      id: 4,
-      name: 'Vans Old Skool',
-      price: 1800000,
-      originalPrice: 2000000,
-      image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=300&q=80',
-      rating: 4.6,
-      reviews: 87,
-      category: 'Sneakers',
-    },
-  ];
+  // Load products from API
+  const loadProducts = async (pageNum = 1, reset = true) => {
+    try {
+      if (reset) {
+        setLoading(true);
+        setError(null);
+      }
+
+      let response;
+      const options = {
+        page: pageNum,
+        limit: 20,
+        sortBy: 'createdAt',
+        sortOrder: 'DESC'
+      };
+
+      // Apply filters based on selectedFilter
+      switch (selectedFilter) {
+        case 'price-low':
+          options.sortBy = 'price';
+          options.sortOrder = 'ASC';
+          break;
+        case 'price-high':
+          options.sortBy = 'price';
+          options.sortOrder = 'DESC';
+          break;
+        case 'rating':
+          options.sortBy = 'rating';
+          options.sortOrder = 'DESC';
+          break;
+        default:
+          options.sortBy = 'createdAt';
+          options.sortOrder = 'DESC';
+      }
+
+      // Determine which API to call based on route params
+      if (searchQuery) {
+        response = await productService.searchProducts(searchQuery, options);
+      } else if (category?.id) {
+        response = await productService.getProductsByCategory(category.id, options);
+      } else {
+        response = await productService.getProducts(options);
+      }
+
+      if (response.success) {
+        const transformedProducts = productService.transformProductsData(response.data.products || response.data);
+        
+        if (reset) {
+          setProducts(transformedProducts);
+        } else {
+          setProducts(prev => [...prev, ...transformedProducts]);
+        }
+        
+        setPagination(response.data.pagination || {});
+      } else {
+        setError(response.message || 'Failed to load products');
+      }
+    } catch (err) {
+      console.error('Error loading products:', err);
+      setError('Failed to load products. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle search
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      setPage(1);
+      loadProducts(1, true);
+    }
+  };
+
+  // Load more products (pagination)
+  const loadMoreProducts = () => {
+    if (!loading && pagination.page < pagination.totalPages) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadProducts(nextPage, false);
+    }
+  };
+
+  // Handle filter change
+  const handleFilterChange = (filter) => {
+    setSelectedFilter(filter);
+    setPage(1);
+    loadProducts(1, true);
+  };
+
+  // Load products on component mount and when dependencies change
+  useEffect(() => {
+    loadProducts(1, true);
+  }, [category, initialSearchQuery]);
+
+  // Handle search query changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery !== initialSearchQuery) {
+        handleSearch();
+      }
+    }, 500); // Debounce search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const filters = [
     { key: 'all', label: 'All' },
@@ -92,7 +150,11 @@ export default function ProductsScreen({ route, navigation }) {
       onPress={() => navigation.navigate(ROUTES.PRODUCT_DETAIL, { product: item })}
     >
       <View style={styles.productImageContainer}>
-        <Image source={{ uri: item.image }} style={styles.productImage} />
+        <Image 
+          source={{ uri: item.image }} 
+          style={styles.productImage}
+          defaultSource={{ uri: 'https://via.placeholder.com/300x300?text=Loading...' }}
+        />
         {/* Badges */}
         <View style={styles.badgeContainer}>
           {item.isNew && (
@@ -130,10 +192,49 @@ export default function ProductsScreen({ route, navigation }) {
             <Text style={styles.stars}>⭐⭐⭐⭐⭐</Text>
             <Text style={styles.rating}>{item.rating}</Text>
           </View>
-          <Text style={styles.reviews}>({item.reviews} reviews)</Text>
+          <Text style={styles.reviews}>({item.reviewsCount} reviews)</Text>
         </View>
       </View>
     </TouchableOpacity>
+  );
+
+  // Loading component
+  const renderLoading = () => (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+      <Text style={styles.loadingText}>Loading products...</Text>
+    </View>
+  );
+
+  // Error component
+  const renderError = () => (
+    <View style={styles.errorContainer}>
+      <Text style={styles.errorText}>{error}</Text>
+      <TouchableOpacity style={styles.retryButton} onPress={() => loadProducts(1, true)}>
+        <Text style={styles.retryButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Footer for loading more
+  const renderFooter = () => {
+    if (!loading || page === 1) return null;
+    return (
+      <View style={styles.footerLoading}>
+        <ActivityIndicator size="small" color={Colors.primary} />
+        <Text style={styles.footerLoadingText}>Loading more...</Text>
+      </View>
+    );
+  };
+
+  // Empty state
+  const renderEmpty = () => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>No products found</Text>
+      <Text style={styles.emptySubtext}>
+        {searchQuery ? `No results for "${searchQuery}"` : 'Try adjusting your filters'}
+      </Text>
+    </View>
   );
 
   return (
@@ -167,7 +268,7 @@ export default function ProductsScreen({ route, navigation }) {
           renderItem={({ item }) => (
             <Chip
               selected={selectedFilter === item.key}
-              onPress={() => setSelectedFilter(item.key)}
+              onPress={() => handleFilterChange(item.key)}
               style={[
                 styles.filterChip,
                 selectedFilter === item.key && styles.selectedFilterChip,
@@ -186,14 +287,20 @@ export default function ProductsScreen({ route, navigation }) {
       </View>
 
       {/* Products List */}
-      <FlatList
-        data={products}
-        renderItem={renderProduct}
-        keyExtractor={(item) => item.id.toString()}
-        numColumns={2}
-        contentContainerStyle={styles.productsList}
-        showsVerticalScrollIndicator={false}
-      />
+      {error ? renderError() : (
+        <FlatList
+          data={products}
+          renderItem={renderProduct}
+          keyExtractor={(item) => item.id.toString()}
+          numColumns={2}
+          contentContainerStyle={styles.productsList}
+          showsVerticalScrollIndicator={false}
+          onEndReached={loadMoreProducts}
+          onEndReachedThreshold={0.1}
+          ListFooterComponent={renderFooter}
+          ListEmptyComponent={!loading ? renderEmpty : null}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -391,4 +498,63 @@ const styles = StyleSheet.create({
     ...Typography.small,
     color: Colors.textSecondary,
   },
+  loadingContainer: {
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
+  },
+  errorContainer: {
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    ...Typography.body,
+    color: Colors.error,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  retryButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: 20,
+  },
+  retryButtonText: {
+    ...Typography.button,
+    color: Colors.white,
+    fontWeight: '600',
+  },
+  footerLoading: {
+    padding: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  footerLoadingText: {
+    ...Typography.small,
+    color: Colors.textSecondary,
+    marginLeft: Spacing.sm,
+  },
+  emptyContainer: {
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    ...Typography.h4,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  emptySubtext: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
 });
+
