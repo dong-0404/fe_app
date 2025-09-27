@@ -21,15 +21,25 @@ export default function ProductsScreen({ route, navigation }) {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({});
   const [page, setPage] = useState(1);
 
   // Load products from API
   const loadProducts = async (pageNum = 1, reset = true) => {
+    return loadProductsWithFilter(pageNum, reset, selectedFilter);
+  };
+
+  // Load products with specific filter
+  const loadProductsWithFilter = async (pageNum = 1, reset = true, filter = selectedFilter, isFilterChange = false) => {
     try {
       if (reset) {
-        setLoading(true);
+        if (isFilterChange) {
+          setFilterLoading(true);
+        } else {
+          setLoading(true);
+        }
         setError(null);
       }
 
@@ -41,8 +51,8 @@ export default function ProductsScreen({ route, navigation }) {
         sortOrder: 'DESC'
       };
 
-      // Apply filters based on selectedFilter
-      switch (selectedFilter) {
+      // Apply filters based on filter parameter
+      switch (filter) {
         case 'price-low':
           options.sortBy = 'price';
           options.sortOrder = 'ASC';
@@ -85,6 +95,7 @@ export default function ProductsScreen({ route, navigation }) {
       setError('Failed to load products. Please check your connection.');
     } finally {
       setLoading(false);
+      setFilterLoading(false);
     }
   };
 
@@ -109,7 +120,8 @@ export default function ProductsScreen({ route, navigation }) {
   const handleFilterChange = (filter) => {
     setSelectedFilter(filter);
     setPage(1);
-    loadProducts(1, true);
+    // Load products with the new filter immediately
+    loadProductsWithFilter(1, true, filter, true);
   };
 
   // Load products on component mount and when dependencies change
@@ -294,7 +306,12 @@ export default function ProductsScreen({ route, navigation }) {
       </View>
 
       {/* Products List */}
-      {error ? renderError() : (
+      {error ? renderError() : filterLoading ? (
+        <View style={styles.filterLoadingOverlay}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.filterLoadingText}>Đang lọc sản phẩm...</Text>
+        </View>
+      ) : (
         <FlatList
           data={products}
           renderItem={renderProduct}
@@ -398,6 +415,18 @@ const styles = StyleSheet.create({
   selectedFilterText: {
     color: Colors.white,
     fontWeight: '600',
+  },
+  filterLoadingOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+  },
+  filterLoadingText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
+    textAlign: 'center',
   },
   productsList: {
     padding: Spacing.md,
