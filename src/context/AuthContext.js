@@ -126,13 +126,26 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AUTH_ACTIONS.LOGIN_START });
     const response = await authService.login(email, password);
     if (response.success !== false) {
-      dispatch({
-        type: AUTH_ACTIONS.LOGIN_SUCCESS,
-        payload: {
-          user: response.data.user,
-          token: response.data.token,
-        },
-      });
+      // After successful login, fetch the complete profile
+      try {
+        const profileResponse = await authService.getProfile();
+        dispatch({
+          type: AUTH_ACTIONS.LOGIN_SUCCESS,
+          payload: {
+            user: profileResponse.data.user,
+            token: response.data.token,
+          },
+        });
+      } catch (profileError) {
+        // Fallback to login response data if profile fetch fails
+        dispatch({
+          type: AUTH_ACTIONS.LOGIN_SUCCESS,
+          payload: {
+            user: response.data.user,
+            token: response.data.token,
+          },
+        });
+      }
       return response;
     } else {
       dispatch({
@@ -147,13 +160,26 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AUTH_ACTIONS.REGISTER_START });
     const response = await authService.register(userData);
     if (response.success !== false) {
-      dispatch({
-        type: AUTH_ACTIONS.REGISTER_SUCCESS,
-        payload: {
-          user: response.data.user,
-          token: response.data.token,
-        },
-      });
+      // After successful registration, fetch the complete profile
+      try {
+        const profileResponse = await authService.getProfile();
+        dispatch({
+          type: AUTH_ACTIONS.REGISTER_SUCCESS,
+          payload: {
+            user: profileResponse.data.user,
+            token: response.data.token,
+          },
+        });
+      } catch (profileError) {
+        // Fallback to register response data if profile fetch fails
+        dispatch({
+          type: AUTH_ACTIONS.REGISTER_SUCCESS,
+          payload: {
+            user: response.data.user,
+            token: response.data.token,
+          },
+        });
+      }
       return response;
     } else {
       dispatch({
@@ -196,6 +222,19 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshProfile = async () => {
+    try {
+      const profileResponse = await authService.getProfile();
+      dispatch({
+        type: AUTH_ACTIONS.SET_USER,
+        payload: profileResponse.data.user,
+      });
+      return profileResponse;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const clearError = () => {
     dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
   };
@@ -207,6 +246,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateProfile,
     changePassword,
+    refreshProfile,
     clearError,
     checkAuthStatus,
   };

@@ -51,30 +51,25 @@ export default function ProductDetailScreen({ route, navigation }) {
     ]).start();
   }, []);
 
-  const sizes = [38, 39, 40, 41, 42, 43];
-  const colors = [
-    { name: 'Black', value: '#000000' },
-    { name: 'White', value: '#ffffff' },
-    { name: 'Blue', value: '#2196f3' },
-    { name: 'Red', value: '#f44336' },
-  ];
+  // Extract unique sizes and colors from product variants
+  const sizes = product.variants ? 
+    [...new Set(product.variants.map(v => v.size).filter(Boolean))] : 
+    [38, 39, 40, 41, 42, 43];
+  
+  const colors = product.variants ? 
+    [...new Set(product.variants.map(v => v.color).filter(Boolean))].map(color => ({
+      name: color,
+      value: color.toLowerCase()
+    })) : 
+    [
+      { name: 'Black', value: '#000000' },
+      { name: 'White', value: '#ffffff' },
+      { name: 'Blue', value: '#2196f3' },
+      { name: 'Red', value: '#f44336' },
+    ];
 
-  const reviews = [
-    {
-      id: 1,
-      user: 'John Doe',
-      rating: 5,
-      comment: 'Great shoes! Very comfortable and stylish.',
-      date: '2024-01-15',
-    },
-    {
-      id: 2,
-      user: 'Jane Smith',
-      rating: 4,
-      comment: 'Good quality, but runs a bit small.',
-      date: '2024-01-10',
-    },
-  ];
+  // Use reviews from product data, fallback to empty array
+  const reviews = product.reviews || [];
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -219,7 +214,7 @@ export default function ProductDetailScreen({ route, navigation }) {
             {renderStars(Math.floor(product.rating))}
           </View>
           <Text style={styles.ratingText}>
-            {product.rating} ({product.reviews} reviews)
+            {product.rating || '0.0'} ({product.reviewsCount || 0} reviews)
           </Text>
         </View>
 
@@ -315,19 +310,26 @@ export default function ProductDetailScreen({ route, navigation }) {
             ]}
           >
             <Card style={styles.reviewsCard}>
-              <Text style={styles.sectionTitle}>Reviews ({product.reviews})</Text>
-              {reviews.map((review) => (
-                <View key={review.id} style={styles.reviewItem}>
-                  <View style={styles.reviewHeader}>
-                    <Text style={styles.reviewUser}>{review.user}</Text>
-                    <View style={styles.reviewRating}>
-                      {renderStars(review.rating)}
+              <Text style={styles.sectionTitle}>Reviews ({product.reviewsCount || 0})</Text>
+              {reviews.length > 0 ? (
+                reviews.map((review) => (
+                  <View key={review.id} style={styles.reviewItem}>
+                    <View style={styles.reviewHeader}>
+                      <Text style={styles.reviewUser}>{review.user?.full_name || 'Anonymous'}</Text>
+                      <View style={styles.reviewRating}>
+                        {renderStars(review.rating)}
+                      </View>
                     </View>
+                    <Text style={styles.reviewTitle}>{review.title}</Text>
+                    <Text style={styles.reviewComment}>{review.comment}</Text>
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.createdAt).toLocaleDateString('vi-VN')}
+                    </Text>
                   </View>
-                  <Text style={styles.reviewComment}>{review.comment}</Text>
-                  <Text style={styles.reviewDate}>{review.date}</Text>
-                </View>
-              ))}
+                ))
+              ) : (
+                <Text style={styles.noReviewsText}>No reviews yet</Text>
+              )}
             </Card>
           </Animated.View>
 
@@ -745,6 +747,12 @@ const styles = StyleSheet.create({
   reviewRating: {
     flexDirection: 'row',
   },
+  reviewTitle: {
+    ...Typography.caption,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
   reviewComment: {
     ...Typography.body,
     color: Colors.textSecondary,
@@ -754,6 +762,13 @@ const styles = StyleSheet.create({
   reviewDate: {
     ...Typography.caption,
     color: Colors.textLight,
+  },
+  noReviewsText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    padding: Spacing.lg,
   },
   actionButtons: {
     flexDirection: 'row',

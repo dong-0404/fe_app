@@ -51,10 +51,6 @@ export default function ProductsScreen({ route, navigation }) {
           options.sortBy = 'price';
           options.sortOrder = 'DESC';
           break;
-        case 'rating':
-          options.sortBy = 'rating';
-          options.sortOrder = 'DESC';
-          break;
         default:
           options.sortBy = 'createdAt';
           options.sortOrder = 'DESC';
@@ -70,7 +66,9 @@ export default function ProductsScreen({ route, navigation }) {
       }
 
       if (response.success) {
+        console.log('📦 Products API Response:', response.data);
         const transformedProducts = productService.transformProductsData(response.data.products || response.data);
+        console.log('✨ Transformed Products:', transformedProducts.slice(0, 2)); // Log first 2 products
         
         if (reset) {
           setProducts(transformedProducts);
@@ -131,10 +129,9 @@ export default function ProductsScreen({ route, navigation }) {
   }, [searchQuery]);
 
   const filters = [
-    { key: 'all', label: 'All' },
-    { key: 'price-low', label: 'Price: Low to High' },
-    { key: 'price-high', label: 'Price: High to Low' },
-    { key: 'rating', label: 'Rating' },
+    { key: 'all', label: 'Tất cả' },
+    { key: 'price-low', label: 'Giá: Thấp đến cao' },
+    { key: 'price-high', label: 'Giá: Cao đến thấp' },
   ];
 
   const formatPrice = (price) => {
@@ -142,6 +139,16 @@ export default function ProductsScreen({ route, navigation }) {
       style: 'currency',
       currency: 'VND',
     }).format(price);
+  };
+
+  const renderStars = (rating) => {
+    const fullStars = Math.floor(rating || 0);
+    const hasHalfStar = (rating || 0) % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+    
+    return '⭐'.repeat(fullStars) + 
+           (hasHalfStar ? '⭐' : '') + 
+           '☆'.repeat(emptyStars);
   };
 
   const renderProduct = ({ item }) => (
@@ -176,7 +183,7 @@ export default function ProductsScreen({ route, navigation }) {
       </View>
       <View style={styles.productInfo}>
         <Text style={styles.productBrand}>{item.brand}</Text>
-        <Text style={styles.productName} numberOfLines={2}>
+        <Text style={styles.productName} numberOfLines={1}>
           {item.name}
         </Text>
         <View style={styles.priceContainer}>
@@ -189,10 +196,10 @@ export default function ProductsScreen({ route, navigation }) {
         </View>
         <View style={styles.ratingContainer}>
           <View style={styles.starsContainer}>
-            <Text style={styles.stars}>⭐⭐⭐⭐⭐</Text>
-            <Text style={styles.rating}>{item.rating}</Text>
+            <Text style={styles.stars}>{renderStars(item.rating)}</Text>
+            <Text style={styles.rating}>{item.rating || '0.0'}</Text>
           </View>
-          <Text style={styles.reviews}>({item.reviewsCount} reviews)</Text>
+          <Text style={styles.reviews}>({item.reviewsCount || 0} reviews)</Text>
         </View>
       </View>
     </TouchableOpacity>

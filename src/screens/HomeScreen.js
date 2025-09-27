@@ -10,7 +10,6 @@ import {
   FlatList,
   Animated,
   Alert,
-  LinearGradient,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -61,19 +60,21 @@ export default function HomeScreen({ navigation }) {
       ]);
 
       if (featuredResponse.success) {
-        setFeaturedProducts(productService.transformProductsData(featuredResponse.data));
+        const transformedFeatured = productService.transformProductsData(featuredResponse.data);
+        setFeaturedProducts(transformedFeatured);
       }
 
       if (hotResponse.success) {
-        setHotProducts(productService.transformProductsData(hotResponse.data));
+        const transformedHot = productService.transformProductsData(hotResponse.data);
+        setHotProducts(transformedHot);
       }
 
       if (newResponse.success) {
-        setNewProducts(productService.transformProductsData(newResponse.data));
+        const transformedNew = productService.transformProductsData(newResponse.data);
+        setNewProducts(transformedNew);
       }
 
     } catch (err) {
-      console.error('Error loading products:', err);
       setError('Failed to load products. Please check your connection.');
     } finally {
       setLoading(false);
@@ -110,6 +111,16 @@ export default function HomeScreen({ navigation }) {
       style: 'currency',
       currency: 'VND',
     }).format(price);
+  };
+
+  const renderStars = (rating) => {
+    const fullStars = Math.floor(rating || 0);
+    const hasHalfStar = (rating || 0) % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+    
+    return '⭐'.repeat(fullStars) + 
+           (hasHalfStar ? '⭐' : '') + 
+           '☆'.repeat(emptyStars);
   };
 
   const handleSearch = () => {
@@ -201,7 +212,7 @@ export default function HomeScreen({ navigation }) {
         </View>
         <View style={styles.productInfo}>
           <Text style={styles.productBrand}>{item.brand}</Text>
-          <Text style={styles.productName} numberOfLines={2}>
+          <Text style={styles.productName} numberOfLines={1}>
             {item.name}
           </Text>
           <View style={styles.priceContainer}>
@@ -214,10 +225,10 @@ export default function HomeScreen({ navigation }) {
           </View>
           <View style={styles.ratingContainer}>
             <View style={styles.starsContainer}>
-              <Text style={styles.stars}>⭐⭐⭐⭐⭐</Text>
-              <Text style={styles.rating}>{item.rating}</Text>
+              <Text style={styles.stars}>{renderStars(item.rating)}</Text>
+              <Text style={styles.rating}>{item.rating || '0.0'}</Text>
             </View>
-            <Text style={styles.reviews}>({item.reviewsCount} reviews)</Text>
+            <Text style={styles.reviews}>({item.reviewsCount || 0} reviews)</Text>
           </View>
         </View>
       </TouchableOpacity>

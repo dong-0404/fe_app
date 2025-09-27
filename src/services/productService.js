@@ -192,7 +192,6 @@ class ProductService {
   // Transform product data for frontend use
   transformProductData(backendProduct) {
     if (!backendProduct) return null;
-
     // Get primary image or first image
     const primaryImage = backendProduct.images?.find(img => img.isPrimary) || 
                         backendProduct.images?.[0];
@@ -201,8 +200,8 @@ class ProductService {
     const variants = backendProduct.variants || [];
     const firstVariant = variants[0];
     const price = firstVariant?.price || 0;
-    const comparePrice = firstVariant?.comparePrice || 0;
-    const discount = comparePrice > price ? Math.round(((comparePrice - price) / comparePrice) * 100) : 0;
+    const originalPrice = firstVariant?.originalPrice || price;
+    const discount = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
 
     // Calculate average rating from reviews
     const reviews = backendProduct.reviews || [];
@@ -220,7 +219,7 @@ class ProductService {
       brandId: backendProduct.brandId,
       categories: backendProduct.categories || [],
       price: price,
-      originalPrice: comparePrice || price,
+      originalPrice: originalPrice,
       discount: discount,
       image: primaryImage?.imageUrl || 'https://via.placeholder.com/300x300?text=No+Image',
       images: backendProduct.images || [],
