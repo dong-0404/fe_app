@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,64 +7,51 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, IconButton } from 'react-native-paper';
+import { Button, Card, IconButton, ActivityIndicator } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function CartScreen({ navigation }) {
-  const [cartItems, setCartItems] = useState([
-    {
-      id: 1,
-      name: 'Nike Air Max 270',
-      brand: 'Nike',
-      price: 2500000,
-      originalPrice: 3000000,
-      discount: 17,
-      image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=300&q=80',
-      size: 40,
-      color: 'Black',
-      quantity: 1,
-      isNew: true,
-    },
-    {
-      id: 2,
-      name: 'Adidas Ultraboost 22',
-      brand: 'Adidas',
-      price: 3200000,
-      originalPrice: 3500000,
-      discount: 9,
-      image: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?auto=format&fit=crop&w=300&q=80',
-      size: 41,
-      color: 'White',
-      quantity: 1,
-      isHot: true,
-    },
-  ]);
+  const { 
+    cartItems, 
+    totalItems, 
+    totalPrice, 
+    isLoading, 
+    error,
+    updateItemQuantity, 
+    removeFromCart, 
+    refreshCart,
+    formatPrice 
+  } = useCart();
+  const { isAuthenticated } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
 
   const shippingFee = 50000;
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
-    }).format(price);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshCart();
+    setRefreshing(false);
   };
 
-  const updateQuantity = (id, newQuantity) => {
+  const handleUpdateQuantity = async (itemId, newQuantity) => {
     if (newQuantity <= 0) {
-      removeItem(id);
+      handleRemoveItem(itemId);
       return;
     }
-    setCartItems(
-      cartItems.map((item) =>
-        item.id === id ? { ...item, quantity: newQuantity } : item
-      )
-    );
+    
+    const response = await updateItemQuantity(itemId, newQuantity);
+    if (response.success === false) {
+      Alert.alert('Error', response.message);
+    }
   };
 
-  const removeItem = (id) => {
+  const handleRemoveItem = (itemId) => {
     Alert.alert(
       'Remove Item',
       'Are you sure you want to remove this item from your cart?',
@@ -73,18 +60,19 @@ export default function CartScreen({ navigation }) {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () =>
-            setCartItems(cartItems.filter((item) => item.id !== id)),
+          onPress: async () => {
+            const response = await removeFromCart(itemId);
+            if (response.success === false) {
+              Alert.alert('Error', response.message);
+            }
+          },
         },
       ]
     );
   };
 
   const getSubtotal = () => {
-    return cartItems.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
+    return totalPrice;
   };
 
   const getTotal = () => {
@@ -96,22 +84,30 @@ export default function CartScreen({ navigation }) {
       Alert.alert('Empty Cart', 'Please add items to your cart first');
       return;
     }
-    navigation.navigate(ROUTES.CHECKOUT, { cartItems, subtotal: getSubtotal(), shippingFee, total: getTotal() });
+    navigation.navigate(ROUTES.CHECKOUT, { 
+      cartItems, 
+      subtotal: getSubtotal(), 
+      shippingFee, 
+      total: getTotal() 
+    });
   };
 
   const renderCartItem = (item) => (
     <Card key={item.id} style={styles.cartItem}>
       <View style={styles.itemContainer}>
         <View style={styles.itemImageContainer}>
-          <Image source={{ uri: item.image }} style={styles.itemImage} />
+          <Image 
+            source={{ uri: item.productVariant?.product?.images?.[0]?.imageUrl || 'https://via.placeholder.com/300x300?text=No+Image' }} 
+            style={styles.itemImage} 
+          />
           {/* Badges */}
           <View style={styles.badgeContainer}>
-            {item.isNew && (
+            {item.productVariant?.product?.isNew && (
               <View style={[styles.badge, styles.newBadge]}>
                 <Text style={styles.badgeText}>NEW</Text>
               </View>
             )}
-            {item.isHot && (
+            {item.productVariant?.product?.isHot && (
               <View style={[styles.badge, styles.hotBadge]}>
                 <Text style={styles.badgeText}>HOT</Text>
               </View>
@@ -124,23 +120,27 @@ export default function CartScreen({ navigation }) {
           </View>
         </View>
         <View style={styles.itemInfo}>
-          <Text style={styles.itemBrand}>{item.brand}</Text>
+          <Text style={styles.itemBrand}>{item.productVariant?.product?.brand?.name || 'Unknown Brand'}</Text>
           <Text style={styles.itemName} numberOfLines={2}>
-            {item.name}
+            {item.productVariant?.product?.name || 'Unknown Product'}
           </Text>
           <View style={styles.itemDetailsContainer}>
-            <View style={styles.detailTag}>
-              <Text style={styles.detailTagText}>Size {item.size}</Text>
-            </View>
-            <View style={styles.detailTag}>
-              <Text style={styles.detailTagText}>{item.color}</Text>
-            </View>
+            {item.productVariant?.size && (
+              <View style={styles.detailTag}>
+                <Text style={styles.detailTagText}>Size {item.productVariant.size}</Text>
+              </View>
+            )}
+            {item.productVariant?.color && (
+              <View style={styles.detailTag}>
+                <Text style={styles.detailTagText}>{item.productVariant.color}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.priceContainer}>
-            <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
-            {item.originalPrice > item.price && (
+            <Text style={styles.itemPrice}>{formatPrice(item.priceAtAdd)}</Text>
+            {item.productVariant?.originalPrice > item.priceAtAdd && (
               <Text style={styles.originalPrice}>
-                {formatPrice(item.originalPrice)}
+                {formatPrice(item.productVariant.originalPrice)}
               </Text>
             )}
           </View>
@@ -149,21 +149,21 @@ export default function CartScreen({ navigation }) {
           <View style={styles.quantityContainer}>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => updateQuantity(item.id, item.quantity - 1)}
+              onPress={() => handleUpdateQuantity(item.id, item.quantity - 1)}
             >
               <Text style={styles.quantityButtonText}>-</Text>
             </TouchableOpacity>
             <Text style={styles.quantityText}>{item.quantity}</Text>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => updateQuantity(item.id, item.quantity + 1)}
+              onPress={() => handleUpdateQuantity(item.id, item.quantity + 1)}
             >
               <Text style={styles.quantityButtonText}>+</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
             style={styles.removeButton}
-            onPress={() => removeItem(item.id)}
+            onPress={() => handleRemoveItem(item.id)}
           >
             <Text style={styles.removeButtonText}>🗑️</Text>
           </TouchableOpacity>
@@ -172,22 +172,33 @@ export default function CartScreen({ navigation }) {
     </Card>
   );
 
+  if (isLoading && cartItems.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading cart...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (cartItems.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.emptyContainer}>
-        <Text style={styles.emptyIcon}>🛒</Text>
-        <Text style={styles.emptyTitle}>Your cart is empty</Text>
-        <Text style={styles.emptySubtitle}>
-          Add some products to get started
-        </Text>
-        <Button
-          mode="contained"
-          style={styles.shopButton}
-          onPress={() => navigation.navigate(ROUTES.HOME)}
-        >
-          Start Shopping
-        </Button>
+          <Text style={styles.emptyIcon}>🛒</Text>
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+          <Text style={styles.emptySubtitle}>
+            Add some products to get started
+          </Text>
+          <Button
+            mode="contained"
+            style={styles.shopButton}
+            onPress={() => navigation.navigate(ROUTES.HOME)}
+          >
+            Start Shopping
+          </Button>
         </View>
       </SafeAreaView>
     );
@@ -204,7 +215,13 @@ export default function CartScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.cartList} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.cartList} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         {cartItems.map(renderCartItem)}
       </ScrollView>
 
@@ -228,6 +245,8 @@ export default function CartScreen({ navigation }) {
           mode="contained"
           style={styles.checkoutButton}
           onPress={handleCheckout}
+          loading={isLoading}
+          disabled={isLoading}
         >
           Proceed to Checkout
         </Button>
@@ -251,6 +270,17 @@ const styles = StyleSheet.create({
   backText: {
     ...Typography.body,
     color: Colors.primary,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  loadingText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
   },
   emptyContainer: {
     flex: 1,
@@ -283,16 +313,18 @@ const styles = StyleSheet.create({
   },
   cartItem: {
     marginBottom: Spacing.md,
-    borderRadius: 20,
-    elevation: 8,
+    borderRadius: 16,
+    elevation: 4,
     shadowColor: Colors.shadowDark,
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
     backgroundColor: Colors.white,
+    borderWidth: 0.5,
+    borderColor: '#f0f0f0',
   },
   itemContainer: {
     flexDirection: 'row',
@@ -305,7 +337,7 @@ const styles = StyleSheet.create({
   itemImage: {
     width: 90,
     height: 90,
-    borderRadius: 15,
+    borderRadius: 12,
   },
   badgeContainer: {
     position: 'absolute',
@@ -343,31 +375,37 @@ const styles = StyleSheet.create({
   itemBrand: {
     ...Typography.small,
     color: Colors.textSecondary,
-    fontWeight: '500',
-    marginBottom: 2,
+    fontWeight: '600',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   itemName: {
     ...Typography.caption,
     fontWeight: '600',
     marginBottom: Spacing.sm,
-    lineHeight: 18,
+    lineHeight: 20,
+    fontSize: 15,
+    color: Colors.textPrimary,
   },
   itemDetailsContainer: {
     flexDirection: 'row',
     marginBottom: Spacing.sm,
   },
   detailTag: {
-    backgroundColor: Colors.lightGray,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginRight: Spacing.xs,
+    backgroundColor: '#f7fafc',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   detailTagText: {
     ...Typography.small,
-    color: Colors.textPrimary,
+    color: '#4a5568',
     fontWeight: '500',
-    fontSize: 10,
+    fontSize: 11,
   },
   priceContainer: {
     flexDirection: 'row',
@@ -375,21 +413,25 @@ const styles = StyleSheet.create({
   },
   itemPrice: {
     ...Typography.price,
-    marginRight: Spacing.xs,
+    marginRight: Spacing.sm,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   originalPrice: {
     ...Typography.small,
     color: Colors.textSecondary,
     textDecorationLine: 'line-through',
+    fontSize: 12,
   },
   itemActions: {
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
+    flexDirection: 'column',
   },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   quantityButton: {
     width: 32,
@@ -423,7 +465,7 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     padding: Spacing.sm,
-    backgroundColor: Colors.lightGray,
+    backgroundColor: '#ffebee',
     borderRadius: 20,
     elevation: 2,
     shadowColor: Colors.shadow,
@@ -433,6 +475,12 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.2,
     shadowRadius: 2,
+    borderWidth: 1,
+    borderColor: '#ffcdd2',
+    minWidth: 40,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   removeButtonText: {
     fontSize: 18,
@@ -440,16 +488,16 @@ const styles = StyleSheet.create({
   summaryCard: {
     margin: Spacing.md,
     padding: Spacing.lg,
-    borderRadius: 20,
+    borderRadius: 16,
     backgroundColor: Colors.white,
-    elevation: 8,
-    shadowColor: Colors.shadowDark,
+    elevation: 4,
+    shadowColor: Colors.shadow,
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   summaryRow: {
     flexDirection: 'row',

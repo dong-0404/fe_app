@@ -17,6 +17,8 @@ import { Card, Button, Searchbar, IconButton } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import productService from '../services/productService';
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -30,6 +32,9 @@ export default function HomeScreen({ navigation }) {
   const [error, setError] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  
+  const { addToCart, isItemInCart, getItemQuantity } = useCart();
+  const { isAuthenticated } = useAuth();
 
   const banners = [
     'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80',
@@ -166,74 +171,115 @@ export default function HomeScreen({ navigation }) {
     </Animated.View>
   );
 
-  const renderProduct = ({ item, index }) => (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [
-          {
-            translateY: slideAnim.interpolate({
-              inputRange: [0, 50],
-              outputRange: [0, 50],
-            }),
-          },
-        ],
-      }}
-    >
-      <TouchableOpacity
-        style={styles.productCard}
-        onPress={() => navigation.navigate(ROUTES.PRODUCT_DETAIL, { product: item })}
-        activeOpacity={0.8}
+  const handleAddToCart = async (product) => {
+    // Get the first available variant
+    const firstVariant = product.variants?.[0];
+    if (!firstVariant) {
+      Alert.alert('Error', 'No variants available for this product');
+      return;
+    }
+
+    try {
+      const response = await addToCart(firstVariant.id, 1);
+      if (response.success !== false) {
+        Alert.alert('Success! 🎉', 'Product added to cart!');
+      } else {
+        Alert.alert('Error', response.message);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add product to cart');
+    }
+  };
+
+  const renderProduct = ({ item, index }) => {
+    const firstVariant = item.variants?.[0];
+    const isInCart = firstVariant ? isItemInCart(firstVariant.id) : false;
+    const cartQuantity = firstVariant ? getItemQuantity(firstVariant.id) : 0;
+
+    return (
+      <Animated.View
+        style={{
+          opacity: fadeAnim,
+          transform: [
+            {
+              translateY: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 50],
+              }),
+            },
+          ],
+        }}
       >
-        <View style={styles.productImageContainer}>
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.productImage}
-            defaultSource={{ uri: 'https://via.placeholder.com/300x300?text=Loading...' }}
-          />
-          {/* Badges */}
-          <View style={styles.badgeContainer}>
-            {item.isNew && (
-              <View style={[styles.badge, styles.newBadge]}>
-                <Text style={styles.badgeText}>NEW</Text>
-              </View>
-            )}
-            {item.isHot && (
-              <View style={[styles.badge, styles.hotBadge]}>
-                <Text style={styles.badgeText}>HOT</Text>
-              </View>
-            )}
-            {item.discount > 0 && (
-              <View style={[styles.badge, styles.discountBadge]}>
-                <Text style={styles.badgeText}>-{item.discount}%</Text>
-              </View>
-            )}
-          </View>
-        </View>
-        <View style={styles.productInfo}>
-          <Text style={styles.productBrand}>{item.brand}</Text>
-          <Text style={styles.productName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <View style={styles.priceContainer}>
-            <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
-            {item.originalPrice > item.price && (
-              <Text style={styles.originalPrice}>
-                {formatPrice(item.originalPrice)}
-              </Text>
-            )}
-          </View>
-          <View style={styles.ratingContainer}>
-            <View style={styles.starsContainer}>
-              <Text style={styles.stars}>{renderStars(item.rating)}</Text>
-              <Text style={styles.rating}>{item.rating || '0.0'}</Text>
+        <TouchableOpacity
+          style={styles.productCard}
+          onPress={() => navigation.navigate(ROUTES.PRODUCT_DETAIL, { product: item })}
+          activeOpacity={0.8}
+        >
+          <View style={styles.productImageContainer}>
+            <Image 
+              source={{ uri: item?.images?.[0]?.imageUrl || 'https://via.placeholder.com/300x300?text=No+Image' }} 
+              style={styles.productImage}
+              defaultSource={{ uri: 'https://via.placeholder.com/300x300?text=Loading...' }}
+            />
+            {/* Badges */}
+            <View style={styles.badgeContainer}>
+              {item.isNew && (
+                <View style={[styles.badge, styles.newBadge]}>
+                  <Text style={styles.badgeText}>NEW</Text>
+                </View>
+              )}
+              {item.isHot && (
+                <View style={[styles.badge, styles.hotBadge]}>
+                  <Text style={styles.badgeText}>HOT</Text>
+                </View>
+              )}
+              {item.discount > 0 && (
+                <View style={[styles.badge, styles.discountBadge]}>
+                  <Text style={styles.badgeText}>-{item.discount}%</Text>
+                </View>
+              )}
             </View>
-            <Text style={styles.reviews}>({item.reviewsCount || 0} reviews)</Text>
+            {/* Cart indicator */}
+            {isInCart && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartQuantity}</Text>
+              </View>
+            )}
           </View>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
+          <View style={styles.productInfo}>
+            <Text style={styles.productBrand}>{item.brand}</Text>
+            <Text style={styles.productName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <View style={styles.priceContainer}>
+              <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
+              {item.originalPrice > item.price && (
+                <Text style={styles.originalPrice}>
+                  {formatPrice(item.originalPrice)}
+                </Text>
+              )}
+            </View>
+            <View style={styles.ratingContainer}>
+              <View style={styles.starsContainer}>
+                <Text style={styles.stars}>{renderStars(item.rating)}</Text>
+                <Text style={styles.rating}>{item.rating || '0.0'}</Text>
+              </View>
+              <Text style={styles.reviews}>({item.reviewsCount || 0} reviews)</Text>
+            </View>
+            {/* Quick add to cart button */}
+            <TouchableOpacity
+              style={[styles.quickAddButton, isInCart && styles.quickAddButtonInCart]}
+              onPress={() => handleAddToCart(item)}
+            >
+              <Text style={[styles.quickAddButtonText, isInCart && styles.quickAddButtonTextInCart]}>
+                {isInCart ? `In Cart (${cartQuantity})` : 'Add to Cart'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
 
   // Loading component
   const renderLoading = () => (
@@ -744,6 +790,31 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 10,
   },
+  cartBadge: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: Colors.shadowDark,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  cartBadgeText: {
+    ...Typography.small,
+    color: Colors.white,
+    fontWeight: 'bold',
+    fontSize: 10,
+  },
   productInfo: {
     padding: Spacing.md,
   },
@@ -826,5 +897,27 @@ const styles = StyleSheet.create({
     ...Typography.button,
     color: Colors.white,
     fontWeight: '600',
+  },
+  quickAddButton: {
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 15,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  quickAddButtonInCart: {
+    backgroundColor: Colors.primary,
+  },
+  quickAddButtonText: {
+    ...Typography.small,
+    color: Colors.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 12,
+  },
+  quickAddButtonTextInCart: {
+    color: Colors.white,
   },
 });

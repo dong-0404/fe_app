@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/context/AuthContext';
+import { CartProvider } from './src/context/CartContext';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { AppState } from 'react-native';
 
@@ -22,8 +23,10 @@ export default function App() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <StatusBar style="auto" />
-          <AppNavigator />
+          <CartProvider>
+            <StatusBar style="auto" />
+            <AppNavigator />
+          </CartProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

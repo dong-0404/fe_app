@@ -15,6 +15,8 @@ import { Button, Card, Chip } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +27,9 @@ export default function ProductDetailScreen({ route, navigation }) {
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  const { addToCart, isItemInCart, getItemQuantity } = useCart();
+  const { isAuthenticated } = useAuth();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -78,30 +83,70 @@ export default function ProductDetailScreen({ route, navigation }) {
     }).format(price);
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!selectedSize || !selectedColor) {
       Alert.alert('Error', 'Please select size and color');
       return;
     }
+
+    // Find the selected variant
+    const selectedVariant = product.variants?.find(variant => 
+      variant.size === selectedSize && variant.color === selectedColor
+    );
+
+    if (!selectedVariant) {
+      Alert.alert('Error', 'Selected variant not found');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const response = await addToCart(selectedVariant.id, quantity);
+      if (response.success !== false) {
+        Alert.alert('Success! 🎉', 'Product added to cart!');
+      } else {
+        Alert.alert('Error', response.message);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add product to cart');
+    } finally {
       setLoading(false);
-      Alert.alert('Success! 🎉', 'Product added to cart!');
-    }, 1000);
+    }
   };
 
-  const handleBuyNow = () => {
+  const handleBuyNow = async () => {
     if (!selectedSize || !selectedColor) {
       Alert.alert('Error', 'Please select size and color');
       return;
     }
+
+    // Find the selected variant
+    const selectedVariant = product.variants?.find(variant => 
+      variant.size === selectedSize && variant.color === selectedColor
+    );
+
+    if (!selectedVariant) {
+      Alert.alert('Error', 'Selected variant not found');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      // Add to cart first
+      const response = await addToCart(selectedVariant.id, quantity);
+      if (response.success !== false) {
+        // Navigate to checkout
+        navigation.navigate(ROUTES.CHECKOUT, {
+          product: { ...product, selectedSize, selectedColor, quantity, variant: selectedVariant },
+        });
+      } else {
+        Alert.alert('Error', response.message);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add product to cart');
+    } finally {
       setLoading(false);
-      navigation.navigate(ROUTES.CHECKOUT, {
-        product: { ...product, selectedSize, selectedColor, quantity },
-      });
-    }, 1000);
+    }
   };
 
   const renderStars = (rating) => {
@@ -171,7 +216,10 @@ export default function ProductDetailScreen({ route, navigation }) {
             ]}
           >
             <View style={styles.imageWrapper}>
-              <Image source={{ uri: product.image }} style={styles.productImage} />
+              <Image 
+                source={{ uri: product?.images?.[0]?.imageUrl || 'https://via.placeholder.com/300x300?text=No+Image' }} 
+                style={styles.productImage} 
+              />
               <View style={styles.imageOverlay} />
             </View>
           </Animated.View>

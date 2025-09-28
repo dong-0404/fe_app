@@ -170,7 +170,7 @@ export default function ProductsScreen({ route, navigation }) {
     >
       <View style={styles.productImageContainer}>
         <Image 
-          source={{ uri: item.image }} 
+          source={{ uri: item?.images?.[0]?.imageUrl || 'https://via.placeholder.com/300x300?text=No+Image' }} 
           style={styles.productImage}
           defaultSource={{ uri: 'https://via.placeholder.com/300x300?text=Loading...' }}
         />
