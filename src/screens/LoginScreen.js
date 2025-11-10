@@ -73,7 +73,6 @@ export default function LoginScreen({ navigation }) {
     if (result.success !== false) {
       navigation.replace(ROUTES.MAIN_APP);
     } else {
-      console.log(result);
       let errorMessage = result.message || 'Login failed';
       showError(errorMessage);
     }

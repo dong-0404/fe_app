@@ -13,17 +13,42 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, Chip } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
-import { ROUTES } from '../navigation/navigationConstants';
+import { ROUTES, navigationHelpers } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
+import cartService from '../services/cartService';
+import wishlistService from '../services/wishlistService';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function ProductDetailScreen({ route, navigation }) {
-  const { product } = route.params;
+  const product = route?.params?.product;
+  const { isAuthenticated } = useAuth();
+
+  if (!product) {
+    return (
+      <SafeAreaView style={styles.fallbackContainer}>
+        <View style={styles.fallbackContent}>
+          <Text style={styles.fallbackIcon}>🔍</Text>
+          <Text style={styles.fallbackTitle}>Không tìm thấy sản phẩm</Text>
+          <Text style={styles.fallbackSubtitle}>
+            Thông tin sản phẩm không khả dụng. Vui lòng quay lại và thử lại sau.
+          </Text>
+          <TouchableOpacity
+            style={styles.fallbackButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.fallbackButtonText}>Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
   const [selectedSize, setSelectedSize] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -50,6 +75,31 @@ export default function ProductDetailScreen({ route, navigation }) {
       }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    const checkWishlistStatus = async () => {
+      if (!isAuthenticated || !product?.id) {
+        setIsFavorite(false);
+        return;
+      }
+      try {
+        const response = await wishlistService.checkProduct(product.id);
+        if (response.success !== false && response.data) {
+          const isInWishlist =
+            response.data.isInWishlist ??
+            response.data.wishlistExists ??
+            false;
+          setIsFavorite(Boolean(isInWishlist));
+        } else {
+          setIsFavorite(false);
+        }
+      } catch (error) {
+        setIsFavorite(false);
+      }
+    };
+
+    checkWishlistStatus();
+  }, [isAuthenticated, product?.id]);
 
   // Extract unique sizes and colors from product variants
   const sizes = product.variants ? 
@@ -78,16 +128,101 @@ export default function ProductDetailScreen({ route, navigation }) {
     }).format(price);
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!selectedSize || !selectedColor) {
       Alert.alert('Error', 'Please select size and color');
       return;
     }
+
+    // Find the matching variant based on selected size and color
+    // selectedColor is the color name (string) from the colors array
+    const matchingVariant = product.variants?.find(variant => {
+      // Compare size - handle both string and number
+      const sizeMatch = String(variant.size) === String(selectedSize);
+      
+      // Compare color - selectedColor is the color name from colors array
+      const colorMatch = variant.color && 
+        variant.color.toLowerCase() === selectedColor?.toLowerCase();
+      
+      return sizeMatch && colorMatch;
+    });
+
+    if (!matchingVariant) {
+      Alert.alert('Error', 'Product variant not found. Please select a different size or color.');
+      return;
+    }
+
+    if (!matchingVariant.isActive) {
+      Alert.alert('Error', 'This variant is currently not available.');
+      return;
+    }
+
+    if (matchingVariant.stockQuantity < quantity) {
+      Alert.alert('Error', 'Insufficient stock available.');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const response = await cartService.addItem(matchingVariant.id, quantity);
+      
+      if (response.success !== false) {
+        Alert.alert('Success! 🎉', 'Product added to cart!', [
+          { text: 'Continue Shopping', style: 'cancel' },
+          {
+            text: 'View Cart',
+            onPress: () => {
+              // Navigate back to MainApp first, then to Cart tab
+              navigation.navigate(ROUTES.MAIN_APP, {
+                screen: ROUTES.CART,
+              });
+            },
+          },
+        ]);
+      } else {
+        Alert.alert('Error', response.message || 'Failed to add product to cart');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add product to cart. Please try again.');
+    } finally {
       setLoading(false);
-      Alert.alert('Success! 🎉', 'Product added to cart!');
-    }, 1000);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!isAuthenticated) {
+      Alert.alert('Thông báo', 'Vui lòng đăng nhập để sử dụng wishlist.');
+      return;
+    }
+
+    if (!product?.id) {
+      Alert.alert('Lỗi', 'Không xác định được sản phẩm.');
+      return;
+    }
+
+    try {
+      setFavoriteLoading(true);
+      let response;
+
+      if (isFavorite) {
+        response = await wishlistService.removeProduct(product.id);
+      } else {
+        response = await wishlistService.addProduct(product.id);
+      }
+
+      if (response?.success === false) {
+        throw new Error(response.message || 'Có lỗi xảy ra, vui lòng thử lại.');
+      }
+
+      setIsFavorite(!isFavorite);
+    } catch (error) {
+      Alert.alert(
+        'Không thể cập nhật wishlist',
+        error?.message || 'Vui lòng thử lại sau.'
+      );
+    } finally {
+      setFavoriteLoading(false);
+    }
   };
 
   const handleBuyNow = () => {
@@ -147,11 +282,12 @@ export default function ProductDetailScreen({ route, navigation }) {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.favoriteButton}
-              onPress={() => setIsFavorite(!isFavorite)}
+              onPress={toggleFavorite}
+              disabled={favoriteLoading}
             >
               <View style={styles.favoriteButtonContainer}>
                 <Text style={styles.favoriteIcon}>
-                  {isFavorite ? '❤️' : '🤍'}
+                  {favoriteLoading ? '…' : isFavorite ? '❤️' : '🤍'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -279,7 +415,15 @@ export default function ProductDetailScreen({ route, navigation }) {
             <Text style={styles.quantityText}>{quantity}</Text>
             <TouchableOpacity
               style={styles.quantityButton}
-              onPress={() => setQuantity(quantity + 1)}
+              onPress={() => {
+                // Get max available stock from selected variant if available
+                const variant = product.variants?.find(v => 
+                  String(v.size) === String(selectedSize) && 
+                  v.color?.toLowerCase() === selectedColor?.toLowerCase()
+                );
+                const maxQuantity = variant?.stockQuantity || 999;
+                setQuantity(Math.min(maxQuantity, quantity + 1));
+              }}
             >
               <Text style={styles.quantityButtonText}>+</Text>
             </TouchableOpacity>
@@ -823,5 +967,51 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+  fallbackContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  fallbackContent: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+    backgroundColor: Colors.white,
+    borderRadius: 24,
+    shadowColor: Colors.shadow,
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  fallbackIcon: {
+    fontSize: 48,
+    marginBottom: Spacing.lg,
+  },
+  fallbackTitle: {
+    ...Typography.h3,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  fallbackSubtitle: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  fallbackButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 24,
+    elevation: 4,
+  },
+  fallbackButtonText: {
+    ...Typography.button,
+    color: Colors.white,
   },
 });

@@ -17,6 +17,8 @@ import { Card, Button, Searchbar, IconButton } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import productService from '../services/productService';
+import cartService from '../services/cartService';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -28,8 +30,10 @@ export default function HomeScreen({ navigation }) {
   const [newProducts, setNewProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [cartCount, setCartCount] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const { isAuthenticated } = useAuth();
 
   const banners = [
     'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80',
@@ -105,6 +109,38 @@ export default function HomeScreen({ navigation }) {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchCartCount();
+    } else {
+      setCartCount(0);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (isAuthenticated) {
+        fetchCartCount();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, isAuthenticated]);
+
+  const fetchCartCount = async () => {
+    try {
+      const response = await cartService.getCart();
+      if (response.success !== false && response.data) {
+        const total = response.data.totals?.totalItems ?? 0;
+        setCartCount(total);
+      } else {
+        setCartCount(0);
+      }
+    } catch (err) {
+      setCartCount(0);
+    }
+  };
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -286,9 +322,11 @@ export default function HomeScreen({ navigation }) {
             >
               <View style={styles.cartIconContainer}>
                 <Text style={styles.cartIcon}>🛒</Text>
-                <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>3</Text>
-                </View>
+                {cartCount > 0 && (
+                  <View style={styles.cartBadge}>
+                    <Text style={styles.cartBadgeText}>{cartCount}</Text>
+                  </View>
+                )}
               </View>
             </TouchableOpacity>
           </View>

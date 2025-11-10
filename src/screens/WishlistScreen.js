@@ -7,86 +7,52 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  Alert,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card } from 'react-native-paper';
+import { Card, Button } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
+import wishlistService from '../services/wishlistService';
+import cartService from '../services/cartService';
+import productService from '../services/productService';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function WishlistScreen({ navigation }) {
-  const [loading, setLoading] = useState(false);
-  const [wishlistItems, setWishlistItems] = useState([
-    {
-      id: 1,
-      name: 'Nike Air Max 270',
-      brand: 'Nike',
-      price: 1500000,
-      originalPrice: 1800000,
-      discount: 17,
-      image: 'https://via.placeholder.com/200x200/FF6B35/FFFFFF?text=Nike+Air+Max+270',
-      rating: 4.5,
-      reviews: 128,
-      isNew: true,
-      isHot: false,
-      size: 42,
-      color: 'Black',
-      addedDate: '2024-01-15',
-    },
-    {
-      id: 2,
-      name: 'Adidas Ultraboost 22',
-      brand: 'Adidas',
-      price: 1000000,
-      originalPrice: 1200000,
-      discount: 17,
-      image: 'https://via.placeholder.com/200x200/2C3E50/FFFFFF?text=Adidas+Ultraboost+22',
-      rating: 4.8,
-      reviews: 95,
-      isNew: false,
-      isHot: true,
-      size: 41,
-      color: 'White',
-      addedDate: '2024-01-12',
-    },
-    {
-      id: 3,
-      name: 'Jordan 1 Retro',
-      brand: 'Jordan',
-      price: 3200000,
-      originalPrice: 3500000,
-      discount: 9,
-      image: 'https://via.placeholder.com/200x200/F39C12/FFFFFF?text=Jordan+1+Retro',
-      rating: 4.9,
-      reviews: 203,
-      isNew: false,
-      isHot: true,
-      size: 43,
-      color: 'Blue',
-      addedDate: '2024-01-10',
-    },
-    {
-      id: 4,
-      name: 'Converse Chuck Taylor',
-      brand: 'Converse',
-      price: 1800000,
-      originalPrice: 2000000,
-      discount: 10,
-      image: 'https://via.placeholder.com/200x200/E74C3C/FFFFFF?text=Converse+Chuck+Taylor',
-      rating: 4.3,
-      reviews: 87,
-      isNew: true,
-      isHot: false,
-      size: 40,
-      color: 'Red',
-      addedDate: '2024-01-08',
-    },
-  ]);
+  const { isAuthenticated } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [wishlistItems, setWishlistItems] = useState([]);
+  const [itemCount, setItemCount] = useState(0);
+  const [processingItemId, setProcessingItemId] = useState(null);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // Load wishlist on mount
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadWishlist();
+    } else {
+      setLoading(false);
+      setWishlistItems([]);
+    }
+  }, [isAuthenticated]);
+
+  // Reload wishlist when screen is focused
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (isAuthenticated) {
+        loadWishlist();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, isAuthenticated]);
 
   useEffect(() => {
     Animated.parallel([
@@ -103,6 +69,89 @@ export default function WishlistScreen({ navigation }) {
     ]).start();
   }, []);
 
+  const loadWishlist = async () => {
+    try {
+      setLoading(true);
+      const response = await wishlistService.getWishlist();
+      
+      if (response.success !== false && response.data) {
+        const items = response.data.wishlist?.items || [];
+        const transformedItems = wishlistService.transformWishlistItems(items);
+        setWishlistItems(transformedItems);
+        setItemCount(response.data.itemCount || 0);
+      } else {
+        setWishlistItems([]);
+        setItemCount(0);
+      }
+    } catch (err) {
+      setWishlistItems([]);
+      setItemCount(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const buildProductForDetail = (backendProduct, fallbackItem) => {
+    if (!backendProduct && !fallbackItem) return null;
+    const productSource = backendProduct || {};
+    const transformed = backendProduct
+      ? productService.transformProductData(backendProduct)
+      : null;
+
+    return {
+      ...(transformed || {}),
+      ...productSource,
+      variants: productSource.variants || fallbackItem?.variants || [],
+      images: productSource.images || fallbackItem?.images || [],
+      reviews: productSource.reviews || transformed?.reviews || [],
+      brand: transformed?.brand || productSource.brand || fallbackItem?.brand,
+      price: transformed?.price ?? fallbackItem?.price ?? 0,
+      originalPrice:
+        transformed?.originalPrice ?? fallbackItem?.originalPrice ?? fallbackItem?.price ?? 0,
+      discount: transformed?.discount ?? fallbackItem?.discount ?? 0,
+      name: productSource.name || fallbackItem?.name || 'Unknown Product',
+      description: productSource.description || transformed?.description || '',
+    };
+  };
+
+  const pickPreferredVariant = (variants = []) => {
+    if (!Array.isArray(variants) || variants.length === 0) return null;
+    const available = variants.find(
+      (variant) =>
+        Number(variant?.stockQuantity ?? 0) > 0 &&
+        variant?.isActive !== false &&
+        variant?.id
+    );
+    if (available) return available;
+    return variants.find((variant) => variant?.id) || null;
+  };
+
+  const handleViewProduct = async (item) => {
+    try {
+      setProcessingItemId(item.id);
+      const response = await productService.getProductById(item.productId);
+
+      if (response?.success === false) {
+        throw new Error(response.message || 'Không thể tải thông tin sản phẩm');
+      }
+
+      const backendProduct = response?.data?.product || response?.data;
+      if (!backendProduct) {
+        throw new Error('Sản phẩm không tồn tại hoặc đã bị xoá');
+      }
+
+      const productForDetail = buildProductForDetail(backendProduct, item);
+      setProcessingItemId(null);
+      navigation.navigate(ROUTES.PRODUCT_DETAIL, { product: productForDetail });
+    } catch (err) {
+      setProcessingItemId(null);
+      Alert.alert(
+        'Không thể mở sản phẩm',
+        err?.message || 'Vui lòng thử lại sau.'
+      );
+    }
+  };
+
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
@@ -110,17 +159,80 @@ export default function WishlistScreen({ navigation }) {
     }).format(price);
   };
 
-  const removeFromWishlist = (itemId) => {
-    setWishlistItems(prev => prev.filter(item => item.id !== itemId));
+  const removeFromWishlist = async (itemId) => {
+    Alert.alert(
+      'Remove Item',
+      'Are you sure you want to remove this item from your wishlist?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await wishlistService.removeItem(itemId);
+              if (response.success !== false) {
+                await loadWishlist();
+                Alert.alert('Success', 'Item removed from wishlist');
+              } else {
+                Alert.alert('Error', response.message || 'Failed to remove item');
+              }
+            } catch (err) {
+              Alert.alert('Error', 'Failed to remove item. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const addToCart = (item) => {
-    // Simulate adding to cart
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      // Show success message or navigate to cart
-    }, 1000);
+  const addToCart = async (item) => {
+    try {
+      setProcessingItemId(item.id);
+
+      let variant = pickPreferredVariant(item.variants);
+      let backendProduct = null;
+
+      if (!variant || !variant.id || Number(variant.stockQuantity ?? 0) <= 0) {
+        const response = await productService.getProductById(item.productId);
+        if (response?.success === false) {
+          throw new Error(response.message || 'Không thể lấy thông tin sản phẩm');
+        }
+        backendProduct = response?.data?.product || response?.data;
+        variant = pickPreferredVariant(backendProduct?.variants || []);
+      }
+
+      if (!variant || !variant.id) {
+        throw new Error('Sản phẩm chưa có biến thể khả dụng.');
+      }
+
+      if (Number(variant.stockQuantity ?? 0) <= 0) {
+        throw new Error('Sản phẩm đã hết hàng.');
+      }
+
+      const response = await cartService.addItem(variant.id, 1);
+      if (response.success !== false) {
+        const successMessage =
+          response.message || 'Đã thêm sản phẩm vào giỏ hàng';
+        Alert.alert('Thành công', successMessage, [
+          { text: 'Tiếp tục xem', style: 'cancel' },
+          {
+            text: 'Xem giỏ hàng',
+            onPress: () =>
+              navigation.navigate(ROUTES.MAIN_APP, { screen: ROUTES.CART }),
+          },
+        ]);
+      } else {
+        throw new Error(response.message || 'Không thể thêm sản phẩm vào giỏ');
+      }
+    } catch (err) {
+      Alert.alert(
+        'Không thể thêm vào giỏ hàng',
+        err?.message || 'Vui lòng thử lại sau.'
+      );
+    } finally {
+      setProcessingItemId(null);
+    }
   };
 
   const renderStars = (rating) => {
@@ -135,7 +247,10 @@ export default function WishlistScreen({ navigation }) {
     return stars;
   };
 
-  const renderWishlistItem = (item) => (
+  const renderWishlistItem = (item) => {
+    const isProcessing = processingItemId === item.id;
+
+    return (
     <Animated.View
       key={item.id}
       style={[
@@ -148,13 +263,16 @@ export default function WishlistScreen({ navigation }) {
     >
       <Card style={styles.itemCard}>
         <View style={styles.itemContent}>
-          <View style={styles.itemImageContainer}>
+          <TouchableOpacity
+            style={styles.itemImageContainer}
+            onPress={() => handleViewProduct(item)}
+            disabled={isProcessing}
+          >
+            <Image source={{ uri: item.image }} style={styles.itemImage} />
             <View style={styles.badgeContainer}>
-              {item.isNew && <Text style={styles.newBadge}>NEW</Text>}
-              {item.isHot && <Text style={styles.hotBadge}>HOT</Text>}
               {item.discount > 0 && <Text style={styles.discountBadge}>-{item.discount}%</Text>}
             </View>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.itemInfo}>
             <Text style={styles.itemBrand}>{item.brand}</Text>
@@ -169,16 +287,22 @@ export default function WishlistScreen({ navigation }) {
               </Text>
             </View>
 
-            <View style={styles.sizeColorContainer}>
-              <View style={styles.sizeColorItem}>
-                <Text style={styles.sizeColorLabel}>Size:</Text>
-                <Text style={styles.sizeColorValue}>{item.size}</Text>
+            {item.variants && item.variants.length > 0 && (
+              <View style={styles.sizeColorContainer}>
+                {item.variants[0].size && (
+                  <View style={styles.sizeColorItem}>
+                    <Text style={styles.sizeColorLabel}>Size:</Text>
+                    <Text style={styles.sizeColorValue}>{item.variants[0].size}</Text>
+                  </View>
+                )}
+                {item.variants[0].color && (
+                  <View style={styles.sizeColorItem}>
+                    <Text style={styles.sizeColorLabel}>Color:</Text>
+                    <Text style={styles.sizeColorValue}>{item.variants[0].color}</Text>
+                  </View>
+                )}
               </View>
-              <View style={styles.sizeColorItem}>
-                <Text style={styles.sizeColorLabel}>Color:</Text>
-                <Text style={styles.sizeColorValue}>{item.color}</Text>
-              </View>
-            </View>
+            )}
 
             <View style={styles.priceContainer}>
               <Text style={styles.currentPrice}>{formatPrice(item.price)}</Text>
@@ -186,13 +310,12 @@ export default function WishlistScreen({ navigation }) {
                 <Text style={styles.originalPrice}>{formatPrice(item.originalPrice)}</Text>
               )}
             </View>
-
-            <Text style={styles.addedDate}>Added on {item.addedDate}</Text>
           </View>
 
           <TouchableOpacity
             style={styles.removeButton}
             onPress={() => removeFromWishlist(item.id)}
+            disabled={isProcessing}
           >
             <Text style={styles.removeButtonText}>❌</Text>
           </TouchableOpacity>
@@ -202,20 +325,26 @@ export default function WishlistScreen({ navigation }) {
           <TouchableOpacity
             style={styles.addToCartButton}
             onPress={() => addToCart(item)}
-            disabled={loading}
+            disabled={isProcessing}
           >
-            <Text style={styles.addToCartButtonText}>🛒 Add to Cart</Text>
+            <Text style={styles.addToCartButtonText}>
+              {isProcessing ? 'Đang xử lý...' : '🛒 Add to Cart'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.buyNowButton}
-            onPress={() => navigation.navigate(ROUTES.PRODUCT_DETAIL, { product: item })}
+            onPress={() => handleViewProduct(item)}
+            disabled={isProcessing}
           >
-            <Text style={styles.buyNowButtonText}>💳 Buy Now</Text>
+            <Text style={styles.buyNowButtonText}>
+              {isProcessing ? 'Đang mở...' : '💳 Buy Now'}
+            </Text>
           </TouchableOpacity>
         </View>
       </Card>
     </Animated.View>
   );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -262,7 +391,7 @@ export default function WishlistScreen({ navigation }) {
               <View style={styles.statsContent}>
                 <View style={styles.statItem}>
                   <Text style={styles.statIcon}>❤️</Text>
-                  <Text style={styles.statNumber}>{wishlistItems.length}</Text>
+                  <Text style={styles.statNumber}>{itemCount}</Text>
                   <Text style={styles.statLabel}>Items in Wishlist</Text>
                 </View>
                 <View style={styles.statDivider} />
@@ -281,8 +410,34 @@ export default function WishlistScreen({ navigation }) {
           <View style={styles.wishlistContainer}>
             {loading ? (
               <View style={styles.loadingContainer}>
-                <LoadingSpinner size="medium" color={Colors.primary} text="Processing..." />
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.loadingText}>Loading wishlist...</Text>
               </View>
+            ) : !isAuthenticated ? (
+              <Animated.View
+                style={[
+                  styles.emptyState,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: slideAnim }],
+                  },
+                ]}
+              >
+                <Card style={styles.emptyCard}>
+                  <Text style={styles.emptyIcon}>🔒</Text>
+                  <Text style={styles.emptyTitle}>Login Required</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Please login to view your wishlist
+                  </Text>
+                  <Button
+                    mode="contained"
+                    style={styles.shopButton}
+                    onPress={() => navigation.navigate(ROUTES.LOGIN)}
+                  >
+                    Login
+                  </Button>
+                </Card>
+              </Animated.View>
             ) : wishlistItems.length > 0 ? (
               wishlistItems.map(renderWishlistItem)
             ) : (
@@ -475,6 +630,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  itemImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 15,
   },
   badgeContainer: {
     position: 'absolute',
@@ -634,6 +795,11 @@ const styles = StyleSheet.create({
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: Spacing.xl,
+  },
+  loadingText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
   },
   emptyState: {
     marginTop: Spacing.xl,

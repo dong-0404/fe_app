@@ -17,6 +17,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import AddressesScreen from '../screens/AddressesScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import OrdersScreen from '../screens/OrdersScreen';
+import OrderDetailScreen from '../screens/OrderDetailScreen';
 import PaymentMethodsScreen from '../screens/PaymentMethodsScreen';
 import WishlistScreen from '../screens/WishlistScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -149,7 +150,6 @@ export default function AppNavigator() {
           component={ProductDetailScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -157,7 +157,6 @@ export default function AppNavigator() {
           component={CheckoutScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -165,7 +164,6 @@ export default function AppNavigator() {
           component={AddressesScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -173,7 +171,6 @@ export default function AppNavigator() {
           component={NotificationsScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -181,7 +178,13 @@ export default function AppNavigator() {
           component={OrdersScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name={ROUTES.ORDER_DETAIL}
+          component={OrderDetailScreen}
+          options={{
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -189,7 +192,6 @@ export default function AppNavigator() {
           component={PaymentMethodsScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -197,7 +199,6 @@ export default function AppNavigator() {
           component={WishlistScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -205,7 +206,6 @@ export default function AppNavigator() {
           component={SettingsScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
         <Stack.Screen
@@ -213,7 +213,6 @@ export default function AppNavigator() {
           component={HelpSupportScreen}
           options={{
             headerShown: false,
-            presentation: 'modal',
           }}
         />
       </Stack.Navigator>

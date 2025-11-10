@@ -21,7 +21,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products?${params.toString()}`);
       return response.data;
     } catch (error) {
-      console.error('Get products error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get products',
@@ -36,7 +35,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/${id}`);
       return response.data;
     } catch (error) {
-      console.error('Get product by ID error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get product',
@@ -51,7 +49,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/slug/${slug}`);
       return response.data;
     } catch (error) {
-      console.error('Get product by slug error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get product',
@@ -66,7 +63,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/featured?limit=${limit}`);
       return response.data;
     } catch (error) {
-      console.error('Get featured products error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get featured products',
@@ -81,7 +77,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/hot?limit=${limit}`);
       return response.data;
     } catch (error) {
-      console.error('Get hot products error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get hot products',
@@ -96,7 +91,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/new?limit=${limit}`);
       return response.data;
     } catch (error) {
-      console.error('Get new products error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get new products',
@@ -115,11 +109,12 @@ class ProductService {
       if (options.limit) params.append('limit', options.limit);
       if (options.categoryId) params.append('categoryId', options.categoryId);
       if (options.brandId) params.append('brandId', options.brandId);
+      if (options.sortBy) params.append('sortBy', options.sortBy);
+      if (options.sortOrder) params.append('sortOrder', options.sortOrder);
 
       const response = await axiosInstance.get(`/products/search?${params.toString()}`);
       return response.data;
     } catch (error) {
-      console.error('Search products error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to search products',
@@ -136,13 +131,13 @@ class ProductService {
       if (options.page) params.append('page', options.page);
       if (options.limit) params.append('limit', options.limit);
       if (options.brandId) params.append('brandId', options.brandId);
+      if (options.search) params.append('search', options.search);
       if (options.sortBy) params.append('sortBy', options.sortBy);
       if (options.sortOrder) params.append('sortOrder', options.sortOrder);
 
       const response = await axiosInstance.get(`/products/category/${categoryId}?${params.toString()}`);
       return response.data;
     } catch (error) {
-      console.error('Get products by category error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get products by category',
@@ -165,7 +160,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/brand/${brandId}?${params.toString()}`);
       return response.data;
     } catch (error) {
-      console.error('Get products by brand error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get products by brand',
@@ -180,7 +174,6 @@ class ProductService {
       const response = await axiosInstance.get(`/products/${productId}/images`);
       return response.data;
     } catch (error) {
-      console.error('Get product images error:', error);
       return {
         success: false,
         message: error.response?.data?.message || 'Failed to get product images',
@@ -198,10 +191,30 @@ class ProductService {
     
     // Calculate discount percentage if there's a compare price
     const variants = backendProduct.variants || [];
-    const firstVariant = variants[0];
-    const price = firstVariant?.price || 0;
-    const originalPrice = firstVariant?.originalPrice || price;
-    const discount = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+    
+    // Get the first active variant, or first variant if no active ones
+    const activeVariants = variants.filter(v => v.isActive !== false);
+    const firstVariant = activeVariants[0] || variants[0];
+    
+    // Calculate min and max prices from active variants
+    const activePrices = activeVariants.map(v => parseFloat(v.price) || 0).filter(p => p > 0);
+    const activeOriginalPrices = activeVariants.map(v => parseFloat(v.originalPrice) || parseFloat(v.price) || 0).filter(p => p > 0);
+    
+    const minPrice = activePrices.length > 0 ? Math.min(...activePrices) : 0;
+    const maxPrice = activePrices.length > 0 ? Math.max(...activePrices) : 0;
+    const minOriginalPrice = activeOriginalPrices.length > 0 ? Math.min(...activeOriginalPrices) : minPrice;
+    const maxOriginalPrice = activeOriginalPrices.length > 0 ? Math.max(...activeOriginalPrices) : maxPrice;
+    
+    // Use first variant price or min price
+    const price = firstVariant ? (parseFloat(firstVariant.price) || 0) : minPrice;
+    const originalPrice = firstVariant ? (parseFloat(firstVariant.originalPrice) || parseFloat(firstVariant.price) || price) : minOriginalPrice;
+    
+    // Show range if prices differ, otherwise show single price
+    const showPriceRange = minPrice !== maxPrice && activePrices.length > 1;
+    const displayPrice = showPriceRange ? minPrice : price;
+    const displayOriginalPrice = showPriceRange ? minOriginalPrice : originalPrice;
+    
+    const discount = displayOriginalPrice > displayPrice ? Math.round(((displayOriginalPrice - displayPrice) / displayOriginalPrice) * 100) : 0;
 
     // Calculate average rating from reviews
     const reviews = backendProduct.reviews || [];
@@ -218,8 +231,11 @@ class ProductService {
       brand: backendProduct.brand?.name || 'Unknown Brand',
       brandId: backendProduct.brandId,
       categories: backendProduct.categories || [],
-      price: price,
-      originalPrice: originalPrice,
+      price: displayPrice,
+      originalPrice: displayOriginalPrice,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+      showPriceRange: showPriceRange,
       discount: discount,
       image: primaryImage?.imageUrl || 'https://via.placeholder.com/300x300?text=No+Image',
       images: backendProduct.images || [],

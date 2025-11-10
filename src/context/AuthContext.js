@@ -109,7 +109,6 @@ export const AuthProvider = ({ children }) => {
       const isAuth = await authService.isAuthenticated();
       if (isAuth) {
         const profileResponse = await authService.getProfile();
-        console.log('profileResponse', profileResponse.data.user);
         dispatch({
           type: AUTH_ACTIONS.SET_USER,
           payload: profileResponse.data.user,

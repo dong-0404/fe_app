@@ -22,6 +22,7 @@ export const ROUTES = {
   ADDRESSES: 'Addresses',
   NOTIFICATIONS: 'Notifications',
   ORDERS: 'Orders',
+  ORDER_DETAIL: 'OrderDetail',
   PAYMENT_METHODS: 'PaymentMethods',
   WISHLIST: 'Wishlist',
   SETTINGS: 'Settings',

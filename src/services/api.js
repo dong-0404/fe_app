@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 // Base API configuration
-const API_BASE_URL = 'https://shin-app.up.railway.app/api';
+const API_BASE_URL = 'http://192.168.1.16:3000/api';
 
 let authToken = null;
 
@@ -38,22 +38,36 @@ export const axiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
   async (config) => {
-    if (!authToken) {
-      const stored = await AsyncStorage.getItem('auth_token');
-      authToken = stored;
+    try {
+      if (!authToken) {
+        const stored = await AsyncStorage.getItem('auth_token');
+        authToken = stored;
+      }
+      if (authToken) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${authToken}`;
+      }
+      return config;
+    } catch (error) {
+      return Promise.reject(error);
     }
-    if (authToken) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${authToken}`;
-    }
-    return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
 axiosInstance.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error)
+  async (error) => {
+    if (error.response && error.response.status === 401) {
+      // Handle 401 Unauthorized - token expired or invalid
+      // Optionally clear token and redirect to login
+      // await clearToken();
+    }
+    
+    return Promise.reject(error);
+  }
 );
 
 // Optional default export for convenience

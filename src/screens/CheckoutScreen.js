@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,19 +13,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card, Button, RadioButton, TextInput } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
+import { useFocusEffect } from '@react-navigation/native';
 import LoadingSpinner from '../components/LoadingSpinner';
+import addressService from '../services/addressService';
+import orderService from '../services/orderService';
 
 const { width } = Dimensions.get('window');
 
 export default function CheckoutScreen({ route, navigation }) {
-  const { cartItems, subtotal, shippingFee, total } = route.params || {};
+  const { cartItems = [], subtotal = 0, shippingFee = 0, total = 0 } = route.params || {};
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [loading, setLoading] = useState(false);
-  const [shippingAddress, setShippingAddress] = useState({
-    name: 'John Doe',
-    phone: '0901234567',
-    address: '123 Main Street, District 1, Ho Chi Minh City',
-  });
+  const [addressLoading, setAddressLoading] = useState(true);
+  const [addressError, setAddressError] = useState(null);
+  const [shippingAddress, setShippingAddress] = useState(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -45,29 +46,123 @@ export default function CheckoutScreen({ route, navigation }) {
     ]).start();
   }, []);
 
+  const fetchAddresses = useCallback(async (isActiveRef) => {
+    try {
+      setAddressLoading(true);
+      setAddressError(null);
+
+      const defaultResponse = await addressService.getDefaultAddress();
+      if (isActiveRef.current && defaultResponse?.success !== false && defaultResponse?.data) {
+        const transformed = addressService.transformAddress(defaultResponse.data);
+        if (transformed) {
+          setShippingAddress(transformed);
+          return;
+        }
+      }
+
+      const listResponse = await addressService.getUserAddresses();
+      if (isActiveRef.current && listResponse?.success !== false) {
+        const transformedList = addressService.transformAddresses(listResponse.data) || [];
+        if (transformedList.length > 0) {
+          setShippingAddress(transformedList.find(addr => addr.isDefault) || transformedList[0]);
+        } else {
+          setShippingAddress(null);
+          setAddressError('No saved addresses found. Please add one before placing an order.');
+        }
+      } else if (isActiveRef.current) {
+        setAddressError(listResponse?.message || 'Failed to load addresses.');
+      }
+    } catch (error) {
+      if (isActiveRef.current) {
+        const message =
+          error?.response?.data?.message ||
+          error?.message ||
+          'Failed to load addresses. Please try again.';
+        setAddressError(message);
+      }
+    } finally {
+      if (isActiveRef.current) {
+        setAddressLoading(false);
+      }
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const isActiveRef = { current: true };
+
+      fetchAddresses(isActiveRef);
+
+      return () => {
+        isActiveRef.current = false;
+      };
+    }, [fetchAddresses])
+  );
+
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
     }).format(price);
   };
+  const canPlaceOrder = !loading && !addressLoading && !!shippingAddress && cartItems.length > 0;
 
-  const handlePlaceOrder = () => {
-    setLoading(true);
-    // Simulate order processing
-    setTimeout(() => {
-      setLoading(false);
+  const handlePlaceOrder = async () => {
+    if (loading) return;
+    if (!shippingAddress) {
+      Alert.alert('Missing address', 'Please add a shipping address before placing an order.');
+      return;
+    }
+
+    if (paymentMethod !== 'cod') {
       Alert.alert(
-        'Order Placed! 🎉',
-        'Your order has been placed successfully. You will receive a confirmation email shortly.',
+        'Phương thức chưa hỗ trợ',
+        'Hiện tại hệ thống chỉ hỗ trợ thanh toán khi nhận hàng (Cash on Delivery). Vui lòng chọn lại.'
+      );
+      setPaymentMethod('cod');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const payload = {
+        shippingAddressId: shippingAddress.id,
+        billingAddressId: shippingAddress.id,
+        shippingFee,
+        discountAmount: 0,
+        taxAmount: 0,
+        notes: 'Thanh toán khi nhận hàng (COD)',
+        paymentMethod: 'cod',
+      };
+
+      const response = await orderService.createOrder(payload);
+      if (response?.success === false) {
+        throw new Error(response.message || 'Failed to create order');
+      }
+
+      Alert.alert(
+        'Đặt hàng thành công! 🎉',
+        'Đơn hàng COD của bạn đã được ghi nhận. Vui lòng chuẩn bị thanh toán tiền mặt khi nhận hàng.',
         [
           {
-            text: 'OK',
+            text: 'Go to Orders',
+            onPress: () => navigation.navigate(ROUTES.ORDERS),
+          },
+          {
+            text: 'Continue Shopping',
             onPress: () => navigation.navigate(ROUTES.MAIN_APP, { screen: ROUTES.HOME }),
           },
         ]
       );
-    }, 2000);
+    } catch (error) {
+      const message =
+        error?.message ||
+        error?.response?.data?.message ||
+        'Failed to place order. Please try again.';
+      Alert.alert('Checkout failed', message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -116,19 +211,38 @@ export default function CheckoutScreen({ route, navigation }) {
                 <Text style={styles.sectionIcon}>📍</Text>
                 <Text style={styles.sectionTitle}>Shipping Address</Text>
               </View>
-              <View style={styles.addressContainer}>
-                <View style={styles.addressInfo}>
-                  <Text style={styles.addressName}>{shippingAddress.name}</Text>
-                  <Text style={styles.addressPhone}>{shippingAddress.phone}</Text>
-                  <Text style={styles.addressText}>{shippingAddress.address}</Text>
+              {addressLoading ? (
+                <View style={styles.addressLoading}>
+                  <LoadingSpinner size="small" color={Colors.primary} text="Loading addresses..." />
                 </View>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => Alert.alert('Edit Address', 'Address editing feature coming soon')}
-                >
-                  <Text style={styles.editButtonText}>✏️ Edit</Text>
-                </TouchableOpacity>
-              </View>
+              ) : shippingAddress ? (
+                <View style={styles.addressContainer}>
+                  <View style={styles.addressInfo}>
+                    <Text style={styles.addressName}>{shippingAddress.fullName}</Text>
+                    <Text style={styles.addressPhone}>{shippingAddress.phone}</Text>
+                    <Text style={styles.addressText}>{shippingAddress.formatted}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => navigation.navigate(ROUTES.ADDRESSES)}
+                  >
+                    <Text style={styles.editButtonText}>✏️ Edit</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.addressEmpty}>
+                  <Text style={styles.addressEmptyText}>
+                    {addressError ||
+                      'No shipping address available. Add an address to complete checkout.'}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.addAddressButton}
+                    onPress={() => navigation.navigate(ROUTES.ADDRESSES)}
+                  >
+                    <Text style={styles.addAddressButtonText}>➕ Add Address</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </Card>
           </Animated.View>
 
@@ -170,9 +284,15 @@ export default function CheckoutScreen({ route, navigation }) {
                 <TouchableOpacity
                   style={[
                     styles.paymentOption,
-                    paymentMethod === 'vnpay' && styles.selectedPaymentOption,
+                    styles.paymentOptionDisabled,
                   ]}
-                  onPress={() => setPaymentMethod('vnpay')}
+                  onPress={() =>
+                    Alert.alert(
+                      'Sắp ra mắt',
+                      'Thanh toán qua VNPay sẽ được hỗ trợ trong các phiên bản tiếp theo.'
+                    )
+                  }
+                  activeOpacity={0.7}
                 >
                   <View style={styles.paymentOptionLeft}>
                     <Text style={styles.paymentIcon}>🏦</Text>
@@ -180,18 +300,24 @@ export default function CheckoutScreen({ route, navigation }) {
                   </View>
                   <View style={[
                     styles.radioButton,
-                    paymentMethod === 'vnpay' && styles.selectedRadioButton,
+                    styles.radioButtonDisabled,
                   ]}>
-                    {paymentMethod === 'vnpay' && <Text style={styles.radioDot}>●</Text>}
+                    <Text style={styles.radioDotDisabled}>✕</Text>
                   </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[
                     styles.paymentOption,
-                    paymentMethod === 'momo' && styles.selectedPaymentOption,
+                    styles.paymentOptionDisabled,
                   ]}
-                  onPress={() => setPaymentMethod('momo')}
+                  onPress={() =>
+                    Alert.alert(
+                      'Sắp ra mắt',
+                      'Thanh toán qua Ví MoMo sẽ được hỗ trợ trong các phiên bản tiếp theo.'
+                    )
+                  }
+                  activeOpacity={0.7}
                 >
                   <View style={styles.paymentOptionLeft}>
                     <Text style={styles.paymentIcon}>📱</Text>
@@ -199,9 +325,9 @@ export default function CheckoutScreen({ route, navigation }) {
                   </View>
                   <View style={[
                     styles.radioButton,
-                    paymentMethod === 'momo' && styles.selectedRadioButton,
+                    styles.radioButtonDisabled,
                   ]}>
-                    {paymentMethod === 'momo' && <Text style={styles.radioDot}>●</Text>}
+                    <Text style={styles.radioDotDisabled}>✕</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -223,19 +349,25 @@ export default function CheckoutScreen({ route, navigation }) {
                 <Text style={styles.sectionIcon}>📋</Text>
                 <Text style={styles.sectionTitle}>Order Summary</Text>
               </View>
-              {cartItems?.map((item) => (
-                <View key={item.id} style={styles.orderItem}>
-                  <View style={styles.orderItemInfo}>
-                    <Text style={styles.itemName}>{item.name}</Text>
-                    <Text style={styles.itemDetails}>
-                      Size: {item.size} | Color: {item.color} | Qty: {item.quantity}
+              {cartItems?.length > 0 ? (
+                cartItems.map((item) => (
+                  <View key={item.id} style={styles.orderItem}>
+                    <View style={styles.orderItemInfo}>
+                      <Text style={styles.itemName}>{item.name}</Text>
+                      <Text style={styles.itemDetails}>
+                        Size: {item.size || '—'} | Color: {item.color || '—'} | Qty: {item.quantity}
+                      </Text>
+                    </View>
+                    <Text style={styles.itemPrice}>
+                      {formatPrice((item.price || item.priceAtAdd || 0) * item.quantity)}
                     </Text>
                   </View>
-                  <Text style={styles.itemPrice}>
-                    {formatPrice(item.price * item.quantity)}
-                  </Text>
-                </View>
-              ))}
+                ))
+              ) : (
+                <Text style={styles.emptyCartText}>
+                  Your cart is empty. Add items before placing an order.
+                </Text>
+              )}
               
               <View style={styles.summaryDivider} />
               
@@ -271,9 +403,12 @@ export default function CheckoutScreen({ route, navigation }) {
             </View>
           ) : (
             <TouchableOpacity
-              style={styles.placeOrderButton}
+              style={[
+                styles.placeOrderButton,
+                !canPlaceOrder && styles.disabledButton,
+              ]}
               onPress={handlePlaceOrder}
-              disabled={loading}
+              disabled={!canPlaceOrder}
             >
               <Text style={styles.placeOrderButtonText}>
                 Place Order - {formatPrice(total || 0)}
@@ -431,6 +566,29 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '600',
   },
+  addressLoading: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  addressEmpty: {
+    alignItems: 'center',
+  },
+  addressEmptyText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  addAddressButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: 18,
+  },
+  addAddressButtonText: {
+    ...Typography.bodyBold,
+    color: Colors.white,
+  },
   paymentOptions: {
     marginTop: Spacing.sm,
   },
@@ -449,6 +607,12 @@ const styles = StyleSheet.create({
   selectedPaymentOption: {
     backgroundColor: Colors.primaryLight,
     borderColor: Colors.primary,
+  },
+  paymentOptionDisabled: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.borderLight,
+    borderStyle: 'dashed',
+    opacity: 0.6,
   },
   paymentOptionLeft: {
     flexDirection: 'row',
@@ -477,8 +641,16 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
     backgroundColor: Colors.primary,
   },
+  radioButtonDisabled: {
+    borderColor: Colors.borderLight,
+    backgroundColor: Colors.surfaceLight,
+  },
   radioDot: {
     color: Colors.white,
+    fontSize: 12,
+  },
+  radioDotDisabled: {
+    color: Colors.textLight,
     fontSize: 12,
   },
   orderItem: {
@@ -542,6 +714,12 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '800',
   },
+  emptyCartText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
   placeOrderContainer: {
     padding: Spacing.lg,
     backgroundColor: Colors.white,
@@ -578,5 +756,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 18,
     fontWeight: '700',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });

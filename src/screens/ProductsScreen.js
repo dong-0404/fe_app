@@ -7,17 +7,15 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Card, Searchbar, Chip } from 'react-native-paper';
+import { Chip } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import productService from '../services/productService';
 
 export default function ProductsScreen({ route, navigation }) {
-  const { category, searchQuery: initialSearchQuery, title } = route.params || {};
-  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
+  const { category, title } = route.params || {};
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +23,6 @@ export default function ProductsScreen({ route, navigation }) {
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({});
   const [page, setPage] = useState(1);
-
   // Load products from API
   const loadProducts = async (pageNum = 1, reset = true) => {
     return loadProductsWithFilter(pageNum, reset, selectedFilter);
@@ -43,7 +40,6 @@ export default function ProductsScreen({ route, navigation }) {
         setError(null);
       }
 
-      let response;
       const options = {
         page: pageNum,
         limit: 20,
@@ -67,18 +63,16 @@ export default function ProductsScreen({ route, navigation }) {
       }
 
       // Determine which API to call based on route params
-      if (searchQuery) {
-        response = await productService.searchProducts(searchQuery, options);
-      } else if (category?.id) {
-        response = await productService.getProductsByCategory(category.id, options);
-      } else {
-        response = await productService.getProducts(options);
+      if (category?.id) {
+        options.categoryId = category.id;
       }
 
+      const response = category?.id
+        ? await productService.getProductsByCategory(category.id, options)
+        : await productService.getProducts(options);
+
       if (response.success) {
-        console.log('📦 Products API Response:', response.data);
         const transformedProducts = productService.transformProductsData(response.data.products || response.data);
-        console.log('✨ Transformed Products:', transformedProducts.slice(0, 2)); // Log first 2 products
         
         if (reset) {
           setProducts(transformedProducts);
@@ -91,19 +85,10 @@ export default function ProductsScreen({ route, navigation }) {
         setError(response.message || 'Failed to load products');
       }
     } catch (err) {
-      console.error('Error loading products:', err);
       setError('Failed to load products. Please check your connection.');
     } finally {
       setLoading(false);
       setFilterLoading(false);
-    }
-  };
-
-  // Handle search
-  const handleSearch = () => {
-    if (searchQuery.trim()) {
-      setPage(1);
-      loadProducts(1, true);
     }
   };
 
@@ -127,18 +112,7 @@ export default function ProductsScreen({ route, navigation }) {
   // Load products on component mount and when dependencies change
   useEffect(() => {
     loadProducts(1, true);
-  }, [category, initialSearchQuery]);
-
-  // Handle search query changes
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (searchQuery !== initialSearchQuery) {
-        handleSearch();
-      }
-    }, 500); // Debounce search
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
+  }, [category]);
 
   const filters = [
     { key: 'all', label: 'Tất cả' },
@@ -251,7 +225,7 @@ export default function ProductsScreen({ route, navigation }) {
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyText}>No products found</Text>
       <Text style={styles.emptySubtext}>
-        {searchQuery ? `No results for "${searchQuery}"` : 'Try adjusting your filters'}
+        Try adjusting your filters or check back later.
       </Text>
     </View>
   );
@@ -266,16 +240,6 @@ export default function ProductsScreen({ route, navigation }) {
         >
           <Text style={styles.backText}>← {title || category?.name || 'Products'}</Text>
         </TouchableOpacity>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="Search products..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchBar}
-        />
       </View>
 
       {/* Filters */}
@@ -367,22 +331,6 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.primary,
     fontWeight: '600',
-  },
-  searchContainer: {
-    padding: Spacing.md,
-    backgroundColor: Colors.white,
-  },
-  searchBar: {
-    elevation: 4,
-    shadowColor: Colors.shadow,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    borderRadius: 25,
-    backgroundColor: Colors.white,
   },
   filtersContainer: {
     backgroundColor: Colors.white,

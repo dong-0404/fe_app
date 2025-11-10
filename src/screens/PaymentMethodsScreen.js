@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,62 +6,51 @@ import {
   ScrollView,
   TouchableOpacity,
   Animated,
-  Dimensions,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
-import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
+import paymentMethodService from '../services/paymentMethodService';
 
-const { width } = Dimensions.get('window');
+const iconForType = (type) => {
+  switch (type) {
+    case 'credit_card':
+    case 'debit_card':
+      return '💳';
+    case 'bank_transfer':
+      return '🏦';
+    case 'ewallet':
+      return '📱';
+    case 'cod':
+      return '💵';
+    default:
+      return '💳';
+  }
+};
+
+const colorForProvider = (provider) => {
+  const map = {
+    visa: '#1A1F71',
+    mastercard: '#EB001B',
+    americanexpress: '#2E77BC',
+    jcb: '#003A8F',
+    momo: '#D82D8B',
+    zalopay: '#028FE3',
+    vnpay: '#00519C',
+    cod: '#16a34a',
+  };
+  return map[provider?.toLowerCase?.()] || Colors.primary;
+};
 
 export default function PaymentMethodsScreen({ navigation }) {
-  const [loading, setLoading] = useState(false);
-  const [paymentMethods, setPaymentMethods] = useState([
-    {
-      id: 1,
-      type: 'card',
-      name: 'Visa **** 1234',
-      provider: 'Visa',
-      expiryDate: '12/25',
-      isDefault: true,
-      icon: '💳',
-      color: '#1A1F71',
-    },
-    {
-      id: 2,
-      type: 'card',
-      name: 'Mastercard **** 5678',
-      provider: 'Mastercard',
-      expiryDate: '08/26',
-      isDefault: false,
-      icon: '💳',
-      color: '#EB001B',
-    },
-    {
-      id: 3,
-      type: 'digital',
-      name: 'MoMo Wallet',
-      provider: 'MoMo',
-      phone: '0901234567',
-      isDefault: false,
-      icon: '📱',
-      color: '#D82D8B',
-    },
-    {
-      id: 4,
-      type: 'digital',
-      name: 'VNPay',
-      provider: 'VNPay',
-      account: 'user@email.com',
-      isDefault: false,
-      icon: '🏦',
-      color: '#0066CC',
-    },
-  ]);
-  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -78,39 +67,113 @@ export default function PaymentMethodsScreen({ navigation }) {
         useNativeDriver: true,
       }),
     ]).start();
+  }, [fadeAnim, slideAnim]);
+
+  const enhancePaymentMethod = useCallback((method) => {
+    if (!method) return null;
+    const expiresAt = method.expiresAt
+      ? new Date(method.expiresAt).toLocaleDateString('vi-VN')
+      : null;
+
+    return {
+      ...method,
+      icon: iconForType(method.type),
+      color: colorForProvider(method.provider),
+      displayName: method.displayName || method.provider || 'Payment method',
+      expiresAt,
+    };
   }, []);
 
-  const setDefaultPayment = (paymentId) => {
-    setPaymentMethods(prev => prev.map(payment => ({
-      ...payment,
-      isDefault: payment.id === paymentId
-    })));
+  const fetchPaymentMethods = useCallback(
+    async (showSpinner = true) => {
+      try {
+        if (showSpinner) {
+          setLoading(true);
+        } else {
+          setRefreshing(true);
+        }
+        setError(null);
+
+        const response = await paymentMethodService.getUserPaymentMethods();
+        if (response?.success === false) {
+          throw new Error(response.message || 'Failed to load payment methods');
+        }
+
+        const raw =
+          response?.data ||
+          response?.paymentMethods ||
+          [];
+
+        const transformed = paymentMethodService.transformPaymentMethods(raw) || [];
+        setPaymentMethods(transformed.map(enhancePaymentMethod));
+      } catch (err) {
+        const message =
+          err?.message ||
+          err?.response?.data?.message ||
+          'Failed to load payment methods. Please try again.';
+        setError(message);
+        setPaymentMethods([]);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [enhancePaymentMethod]
+  );
+
+  useEffect(() => {
+    fetchPaymentMethods(true);
+  }, [fetchPaymentMethods]);
+
+  const setDefaultPayment = async (paymentId) => {
+    try {
+      const response = await paymentMethodService.setDefaultPaymentMethod(paymentId);
+      if (response?.success === false) {
+        throw new Error(response.message || 'Failed to set default payment method');
+      }
+      await fetchPaymentMethods(true);
+    } catch (err) {
+      Alert.alert('Error', err?.message || 'Failed to set default payment method.');
+    }
   };
 
   const deletePaymentMethod = (paymentId) => {
-    Alert.alert(
-      'Delete Payment Method',
-      'Are you sure you want to delete this payment method?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setPaymentMethods(prev => prev.filter(payment => payment.id !== paymentId));
+    Alert.alert('Delete Payment Method', 'Are you sure you want to delete this payment method?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const response = await paymentMethodService.deletePaymentMethod(paymentId);
+            if (response?.success === false) {
+              throw new Error(response.message || 'Failed to delete payment method');
+            }
+            await fetchPaymentMethods(true);
+          } catch (err) {
+            Alert.alert('Error', err?.message || 'Failed to delete payment method.');
           }
-        }
-      ]
-    );
+        },
+      },
+    ]);
   };
 
-  const editPaymentMethod = (payment) => {
+  const editPaymentMethod = () => {
     Alert.alert('Edit Payment Method', 'Edit payment method feature will be implemented');
   };
 
   const addNewPaymentMethod = () => {
     Alert.alert('Add Payment Method', 'Add new payment method feature will be implemented');
   };
+
+  const cardCount = useMemo(
+    () => paymentMethods.filter(method => ['credit_card', 'debit_card'].includes(method.type)).length,
+    [paymentMethods]
+  );
+  const walletCount = useMemo(
+    () => paymentMethods.filter(method => method.type === 'ewallet').length,
+    [paymentMethods]
+  );
 
   const renderPaymentMethodItem = (payment) => (
     <Animated.View
@@ -130,17 +193,13 @@ export default function PaymentMethodsScreen({ navigation }) {
               <Text style={styles.paymentIcon}>{payment.icon}</Text>
             </View>
             <View style={styles.paymentDetails}>
-              <Text style={styles.paymentName}>{payment.name}</Text>
+              <Text style={styles.paymentName}>{payment.displayName}</Text>
               <Text style={styles.paymentProvider}>{payment.provider}</Text>
-              {payment.expiryDate && (
-                <Text style={styles.paymentExpiry}>Expires {payment.expiryDate}</Text>
+              {payment.expiresAt && (
+                <Text style={styles.paymentExpiry}>Expires {payment.expiresAt}</Text>
               )}
-              {payment.phone && (
-                <Text style={styles.paymentPhone}>{payment.phone}</Text>
-              )}
-              {payment.account && (
-                <Text style={styles.paymentAccount}>{payment.account}</Text>
-              )}
+              {payment.phone && <Text style={styles.paymentPhone}>{payment.phone}</Text>}
+              {payment.account && <Text style={styles.paymentAccount}>{payment.account}</Text>}
             </View>
           </View>
           <View style={styles.paymentActions}>
@@ -149,10 +208,7 @@ export default function PaymentMethodsScreen({ navigation }) {
                 <Text style={styles.defaultBadgeText}>DEFAULT</Text>
               </View>
             )}
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => editPaymentMethod(payment)}
-            >
+            <TouchableOpacity style={styles.actionButton} onPress={editPaymentMethod}>
               <Text style={styles.actionButtonText}>✏️</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -179,27 +235,29 @@ export default function PaymentMethodsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.gradient}>
-        {/* Background decorative elements */}
         <View style={styles.decorativeElements}>
           <View style={[styles.decorativeCircle, styles.circle1]} />
           <View style={[styles.decorativeCircle, styles.circle2]} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <Animated.View 
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchPaymentMethods(false)}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
+            />
+          }
+        >
+          <Animated.View
             style={[
               styles.header,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
             ]}
           >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
               <View style={styles.backButtonContainer}>
                 <Text style={styles.backIcon}>←</Text>
                 <Text style={styles.backText}>Payment Methods</Text>
@@ -207,14 +265,10 @@ export default function PaymentMethodsScreen({ navigation }) {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Stats Card */}
           <Animated.View
             style={[
               styles.statsContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
             ]}
           >
             <Card style={styles.statsCard}>
@@ -227,47 +281,39 @@ export default function PaymentMethodsScreen({ navigation }) {
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
                   <Text style={styles.statIcon}>🏦</Text>
-                  <Text style={styles.statNumber}>
-                    {paymentMethods.filter(p => p.type === 'card').length}
-                  </Text>
+                  <Text style={styles.statNumber}>{cardCount}</Text>
                   <Text style={styles.statLabel}>Credit Cards</Text>
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
                   <Text style={styles.statIcon}>📱</Text>
-                  <Text style={styles.statNumber}>
-                    {paymentMethods.filter(p => p.type === 'digital').length}
-                  </Text>
+                  <Text style={styles.statNumber}>{walletCount}</Text>
                   <Text style={styles.statLabel}>Digital Wallets</Text>
                 </View>
               </View>
             </Card>
           </Animated.View>
 
-          {/* Add New Payment Method Button */}
           <Animated.View
             style={[
               styles.addButtonContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
             ]}
           >
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={addNewPaymentMethod}
-            >
+            <TouchableOpacity style={styles.addButton} onPress={addNewPaymentMethod}>
               <Text style={styles.addButtonIcon}>➕</Text>
               <Text style={styles.addButtonText}>Add Payment Method</Text>
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Payment Methods List */}
           <View style={styles.paymentMethodsContainer}>
             {loading ? (
               <View style={styles.loadingContainer}>
-                <LoadingSpinner size="medium" color={Colors.primary} text="Loading payment methods..." />
+                <LoadingSpinner
+                  size="medium"
+                  color={Colors.primary}
+                  text="Loading payment methods..."
+                />
               </View>
             ) : paymentMethods.length > 0 ? (
               paymentMethods.map(renderPaymentMethodItem)
@@ -275,37 +321,32 @@ export default function PaymentMethodsScreen({ navigation }) {
               <Animated.View
                 style={[
                   styles.emptyState,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }],
-                  },
+                  { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
                 ]}
               >
                 <Card style={styles.emptyCard}>
                   <Text style={styles.emptyIcon}>💳</Text>
                   <Text style={styles.emptyTitle}>No Payment Methods</Text>
                   <Text style={styles.emptySubtitle}>
-                    Add a payment method to make checkout faster and easier
+                    {error || 'Add a payment method to make checkout faster and easier'}
                   </Text>
                   <TouchableOpacity
-                    style={styles.shopButton}
-                    onPress={addNewPaymentMethod}
+                    style={[styles.shopButton, error && styles.retryButton]}
+                    onPress={error ? () => fetchPaymentMethods(true) : addNewPaymentMethod}
                   >
-                    <Text style={styles.shopButtonText}>Add Payment Method</Text>
+                    <Text style={styles.shopButtonText}>
+                      {error ? 'Try Again' : 'Add Payment Method'}
+                    </Text>
                   </TouchableOpacity>
                 </Card>
               </Animated.View>
             )}
           </View>
 
-          {/* Security Notice */}
           <Animated.View
             style={[
               styles.securityNotice,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
             ]}
           >
             <Card style={styles.securityCard}>
@@ -314,7 +355,8 @@ export default function PaymentMethodsScreen({ navigation }) {
                 <View style={styles.securityText}>
                   <Text style={styles.securityTitle}>Secure Payment</Text>
                   <Text style={styles.securitySubtitle}>
-                    Your payment information is encrypted and secure. We never store your full card details.
+                    Your payment information is encrypted and secure. We never store your full card
+                    details.
                   </Text>
                 </View>
               </View>
@@ -643,6 +685,9 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+  },
+  retryButton: {
+    backgroundColor: Colors.info,
   },
   shopButtonText: {
     ...Typography.button,

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,18 +7,23 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from 'react-native-paper';
 import { Colors, Spacing, Typography } from '../constants/colors';
 import { ROUTES } from '../navigation/navigationConstants';
 import LoadingSpinner from '../components/LoadingSpinner';
+import orderService from '../services/orderService';
 
 const { width } = Dimensions.get('window');
 
 export default function OrdersScreen({ navigation }) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [orders, setOrders] = useState([]);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -38,57 +43,74 @@ export default function OrdersScreen({ navigation }) {
     ]).start();
   }, []);
 
-  const orders = [
-    {
-      id: 'ORD001',
-      date: '2024-01-15',
-      status: 'delivered',
-      total: 2500000,
-      items: [
-        { name: 'Nike Air Max 270', size: '42', color: 'Black', quantity: 1, price: 1500000 },
-        { name: 'Adidas Ultraboost 22', size: '41', color: 'White', quantity: 1, price: 1000000 },
-      ],
-    },
-    {
-      id: 'ORD002',
-      date: '2024-01-10',
-      status: 'shipped',
-      total: 1800000,
-      items: [
-        { name: 'Converse Chuck Taylor', size: '40', color: 'Red', quantity: 1, price: 1800000 },
-      ],
-    },
-    {
-      id: 'ORD003',
-      date: '2024-01-05',
-      status: 'processing',
-      total: 3200000,
-      items: [
-        { name: 'Jordan 1 Retro', size: '43', color: 'Blue', quantity: 1, price: 3200000 },
-      ],
-    },
-    {
-      id: 'ORD004',
-      date: '2024-01-01',
-      status: 'cancelled',
-      total: 1200000,
-      items: [
-        { name: 'Vans Old Skool', size: '39', color: 'Black', quantity: 1, price: 1200000 },
-      ],
-    },
-  ];
+  const fetchOrders = useCallback(async (showSpinner = true) => {
+    try {
+      if (showSpinner) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+      setError(null);
 
-  const filters = [
-    { key: 'all', label: 'All Orders', count: orders.length },
-    { key: 'processing', label: 'Processing', count: orders.filter(o => o.status === 'processing').length },
-    { key: 'shipped', label: 'Shipped', count: orders.filter(o => o.status === 'shipped').length },
-    { key: 'delivered', label: 'Delivered', count: orders.filter(o => o.status === 'delivered').length },
-    { key: 'cancelled', label: 'Cancelled', count: orders.filter(o => o.status === 'cancelled').length },
-  ];
+      const response = await orderService.getUserOrders();
+      if (response?.success === false) {
+        throw new Error(response.message || 'Failed to load orders');
+      }
 
-  const filteredOrders = selectedFilter === 'all' 
-    ? orders 
-    : orders.filter(order => order.status === selectedFilter);
+      const backendOrders =
+        response?.data?.orders ||
+        response?.data ||
+        response?.orders ||
+        [];
+
+      const transformed = orderService.transformOrders(backendOrders) || [];
+      setOrders(transformed);
+    } catch (err) {
+      const message =
+        err?.message ||
+        err?.response?.data?.message ||
+        'Failed to load orders. Please try again.';
+      setError(message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOrders(true);
+  }, [fetchOrders]);
+
+  const filters = useMemo(() => {
+    const counts = orders.reduce((acc, order) => {
+      if (order.status) {
+        acc[order.status] = (acc[order.status] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    return [
+      { key: 'all', label: 'All Orders', count: orders.length },
+      { key: 'processing', label: 'Processing', count: counts.processing || 0 },
+      { key: 'shipped', label: 'Shipped', count: counts.shipped || 0 },
+      { key: 'delivered', label: 'Delivered', count: counts.delivered || 0 },
+      { key: 'cancelled', label: 'Cancelled', count: counts.cancelled || 0 },
+    ];
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    if (selectedFilter === 'all') return orders;
+    return orders.filter(order => order.status === selectedFilter);
+  }, [orders, selectedFilter]);
+
+  const deliveredCount = useMemo(
+    () => orders.filter(order => order.status === 'delivered').length,
+    [orders]
+  );
+  const inProgressCount = useMemo(
+    () => orders.filter(order => ['processing', 'shipped'].includes(order.status)).length,
+    [orders]
+  );
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -131,8 +153,12 @@ export default function OrdersScreen({ navigation }) {
       <Card style={styles.orderCardContent}>
         <View style={styles.orderHeader}>
           <View style={styles.orderInfo}>
-            <Text style={styles.orderId}>Order #{order.id}</Text>
-            <Text style={styles.orderDate}>{order.date}</Text>
+            <Text style={styles.orderId}>Order #{order.orderNumber || order.id}</Text>
+            <Text style={styles.orderDate}>
+              {order.placedAt
+                ? new Date(order.placedAt).toLocaleDateString('vi-VN')
+                : '—'}
+            </Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.status) }]}>
             <Text style={styles.statusIcon}>{getStatusIcon(order.status)}</Text>
@@ -141,26 +167,33 @@ export default function OrdersScreen({ navigation }) {
         </View>
 
         <View style={styles.orderItems}>
-          {order.items.map((item, index) => (
+          {order.items?.map((item, index) => (
             <View key={index} style={styles.orderItem}>
               <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
+                <Text style={styles.itemName}>
+                  {item.name || item.product?.name || 'Product'}
+                </Text>
                 <Text style={styles.itemDetails}>
-                  Size: {item.size} | Color: {item.color} | Qty: {item.quantity}
+                  SKU: {item.sku || item.skuSnapshot || '—'} | Qty: {item.quantity}
                 </Text>
               </View>
-              <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
+              <Text style={styles.itemPrice}>
+                {formatPrice(item.totalPrice || item.unitPrice || 0)}
+              </Text>
             </View>
           ))}
         </View>
 
         <View style={styles.orderFooter}>
           <Text style={styles.totalLabel}>Total:</Text>
-          <Text style={styles.totalPrice}>{formatPrice(order.total)}</Text>
+          <Text style={styles.totalPrice}>{formatPrice(order.totalAmount || 0)}</Text>
         </View>
 
         <View style={styles.orderActions}>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate(ROUTES.ORDER_DETAIL, { orderId: order.id })}
+          >
             <Text style={styles.actionButtonText}>View Details</Text>
           </TouchableOpacity>
           {order.status === 'delivered' && (
@@ -182,7 +215,17 @@ export default function OrdersScreen({ navigation }) {
           <View style={[styles.decorativeCircle, styles.circle2]} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchOrders(false)}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
+            />
+          }
+        >
           {/* Header */}
           <Animated.View 
             style={[
@@ -222,16 +265,12 @@ export default function OrdersScreen({ navigation }) {
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>
-                    {orders.filter(o => o.status === 'delivered').length}
-                  </Text>
+                  <Text style={styles.statNumber}>{deliveredCount}</Text>
                   <Text style={styles.statLabel}>Delivered</Text>
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>
-                    {orders.filter(o => o.status === 'processing' || o.status === 'shipped').length}
-                  </Text>
+                  <Text style={styles.statNumber}>{inProgressCount}</Text>
                   <Text style={styles.statLabel}>In Progress</Text>
                 </View>
               </View>
@@ -295,17 +334,28 @@ export default function OrdersScreen({ navigation }) {
                   <Text style={styles.emptyIcon}>📦</Text>
                   <Text style={styles.emptyTitle}>No Orders Found</Text>
                   <Text style={styles.emptySubtitle}>
-                    {selectedFilter === 'all' 
-                      ? "You haven't placed any orders yet"
-                      : `No ${selectedFilter} orders found`
-                    }
+                    {error ||
+                      (selectedFilter === 'all'
+                        ? "You haven't placed any orders yet"
+                        : `No ${selectedFilter} orders found`)}
                   </Text>
-                  <TouchableOpacity
-                    style={styles.shopButton}
-                    onPress={() => navigation.navigate(ROUTES.MAIN_APP, { screen: ROUTES.HOME })}
-                  >
-                    <Text style={styles.shopButtonText}>Start Shopping</Text>
-                  </TouchableOpacity>
+                  {error ? (
+                    <TouchableOpacity
+                      style={[styles.shopButton, styles.retryButton]}
+                      onPress={() => fetchOrders(true)}
+                    >
+                      <Text style={styles.shopButtonText}>Try Again</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.shopButton}
+                      onPress={() =>
+                        navigation.navigate(ROUTES.MAIN_APP, { screen: ROUTES.HOME })
+                      }
+                    >
+                      <Text style={styles.shopButtonText}>Start Shopping</Text>
+                    </TouchableOpacity>
+                  )}
                 </Card>
               </Animated.View>
             )}
@@ -652,6 +702,9 @@ const styles = StyleSheet.create({
     ...Typography.button,
     color: Colors.white,
     fontWeight: '700',
+  },
+  retryButton: {
+    backgroundColor: Colors.info,
   },
 });
 
